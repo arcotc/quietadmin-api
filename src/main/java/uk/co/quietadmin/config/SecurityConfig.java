@@ -76,6 +76,8 @@ public class SecurityConfig {
                                 "/api/auth/verify",
                                 "/api/auth/refresh"
                         ).permitAll()
+                        .requestMatchers("/api/auth/sessions/**").authenticated()
+                        .requestMatchers("/api/auth/logout-all").authenticated()
 
                         // Swagger
                         .requestMatchers(
