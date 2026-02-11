@@ -1,5 +1,6 @@
 package uk.co.quietadmin.service.auth;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,7 @@ import uk.co.quietadmin.domain.user.UserStatus;
 import uk.co.quietadmin.security.JwtService;
 import uk.co.quietadmin.security.TokenHash;
 import uk.co.quietadmin.web.auth.AuthResponse;
+import uk.co.quietadmin.web.auth.LoginThrottleService;
 import uk.co.quietadmin.web.auth.SessionResponse;
 
 import java.security.MessageDigest;
@@ -28,6 +30,8 @@ import java.util.List;
 
 @Service
 public class AuthService {
+    @Value("${security.session.idle-seconds:3600}")
+    private long sessionIdleSeconds;
 
     private final UserAccountRepository userRepository;
     private final QaGroupRepository groupRepository;
@@ -35,6 +39,7 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final LoginThrottleService loginThrottleService;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -50,7 +55,7 @@ public class AuthService {
             MembershipRepository membershipRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService
+            JwtService jwtService, LoginThrottleService loginThrottleService
     ) {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
@@ -58,24 +63,30 @@ public class AuthService {
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.loginThrottleService = loginThrottleService;
     }
 
     @Transactional
-    public AuthResponse register(String email, String rawPassword) {
+    public AuthResponse register(String email,
+                                 String rawPassword,
+                                 String userAgent,
+                                 String ipAddress) {
 
         String normalizedEmail = normalizeEmail(email);
 
         userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
-                .ifPresent(u -> { throw new IllegalArgumentException("Email already registered"); });
+                .ifPresent(u -> {
+                    throw new IllegalArgumentException("Email already registered");
+                });
 
-        // 1) Create user
+        // 1️⃣ Create user
         UserAccount user = new UserAccount();
         user.setEmail(normalizedEmail);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         user.setStatus(UserStatus.ACTIVE);
         user = userRepository.save(user);
 
-        // 2) Create group
+        // 2️⃣ Create group
         QaGroup group = new QaGroup();
         group.setName(defaultGroupName(normalizedEmail));
         group.setSlug(generateSlug(normalizedEmail));
@@ -83,81 +94,112 @@ public class AuthService {
         group.setTrialEndsAt(Instant.now().plus(trialDays, ChronoUnit.DAYS));
         group = groupRepository.save(group);
 
-        // 3) Membership as ADMIN
+        // 3️⃣ Create membership
         Membership membership = new Membership();
         membership.setUserId(user.getId());
         membership.setGroupId(group.getId());
         membership.setRole("ADMIN");
         membershipRepository.save(membership);
 
-        return issueTokens(user);
+        // 4️⃣ Issue tokens with device context
+        return issueTokens(user, userAgent, ipAddress);
     }
 
     @Transactional
-    public AuthResponse login(String email, String rawPassword) {
-
+    public AuthResponse login(String email,
+                              String rawPassword,
+                              String userAgent,
+                              String ipAddress) {
         String normalizedEmail = normalizeEmail(email);
 
-        UserAccount user = userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+        loginThrottleService.assertLoginAllowed(normalizedEmail, ipAddress);
 
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("Account is not active");
-        }
+        UserAccount user = userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
+                .orElseThrow(() -> {
+                    loginThrottleService.recordFailure(normalizedEmail, ipAddress);
+                    return new IllegalArgumentException("Invalid credentials");
+                });
 
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            loginThrottleService.recordFailure(normalizedEmail, ipAddress);
             throw new IllegalArgumentException("Invalid credentials");
         }
 
-        return issueTokens(user);
+        loginThrottleService.recordSuccess(normalizedEmail, ipAddress);
+
+        return issueTokens(user, userAgent, ipAddress);
     }
 
     @Transactional
-    public AuthResponse refresh(String rawRefreshToken, String userAgent, String ipAddress) {
+    public AuthResponse refresh(
+            String rawRefreshToken,
+            String userAgent,
+            String ipAddress
+    ) {
 
+        Instant now = Instant.now();
         String hash = TokenHash.sha256(rawRefreshToken);
 
-        RefreshToken stored = refreshTokenRepository.findByTokenHash(hash)
+        RefreshToken stored = refreshTokenRepository
+                .findByTokenHash(hash)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
 
-        // 🔥 Replay detection:
-        // if revoked OR already rotated -> token reuse attempt
-        boolean replayAttempt =
-                stored.getRevokedAt() != null || stored.getReplacedByTokenHash() != null;
+        // ---------------------------------------
+        // 1️⃣ Replay detection (critical security)
+        // ---------------------------------------
+        if (stored.getRevokedAt() != null) {
 
-        if (replayAttempt) {
-            // Lockout: revoke every active refresh token for this user
-            refreshTokenRepository.revokeAllForUser(stored.getUserId(), Instant.now());
+            // If token already revoked → possible replay attack
+            revokeAllUserSessions(stored.getUserId(), now);
 
-            // Optional: escalate account status
-            // userRepository.findById(stored.getUserId()).ifPresent(u -> { u.setStatus(UserStatus.SUSPENDED); userRepository.save(u); });
-
-            throw new IllegalArgumentException("Refresh token reuse detected. Signed out everywhere.");
+            throw new IllegalArgumentException("Session revoked (possible replay detected)");
         }
 
-        if (stored.getExpiresAt().isBefore(Instant.now())) {
+        // ---------------------------------------
+        // 2️⃣ Expiry check
+        // ---------------------------------------
+        if (stored.getExpiresAt().isBefore(now)) {
+            stored.setRevokedAt(now);
+            refreshTokenRepository.save(stored);
             throw new IllegalArgumentException("Refresh token expired");
         }
 
+        // ---------------------------------------
+        // 3️⃣ Idle timeout check
+        // ---------------------------------------
+        Instant lastUsed = stored.getLastUsedAt() != null
+                ? stored.getLastUsedAt()
+                : stored.getCreatedAt();
+
+        if (lastUsed != null && lastUsed.isBefore(now.minusSeconds(sessionIdleSeconds))) {
+            stored.setRevokedAt(now);
+            refreshTokenRepository.save(stored);
+            throw new IllegalArgumentException("Session expired due to inactivity");
+        }
+
+        // ---------------------------------------
+        // 4️⃣ Load user
+        // ---------------------------------------
         UserAccount user = userRepository.findById(stored.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("Account is not active");
+            throw new IllegalArgumentException("Account not active");
         }
 
-        // rotate: revoke old
-        stored.setRevokedAt(Instant.now());
-        stored.setLastUsedAt(Instant.now());
-        stored.setUserAgent(userAgent);
-        stored.setIpAddress(ipAddress);
+        // ---------------------------------------
+        // 5️⃣ Rotate token
+        // ---------------------------------------
+        stored.setRevokedAt(now);
+        stored.setLastUsedAt(now);
 
-        AuthResponse next = issueTokens(user, userAgent, ipAddress);
+        AuthResponse newTokens = issueTokens(user, userAgent, ipAddress);
 
-        stored.setReplacedByTokenHash(TokenHash.sha256(next.refreshToken()));
+        stored.setReplacedByTokenHash(TokenHash.sha256(newTokens.refreshToken()));
+
         refreshTokenRepository.save(stored);
 
-        return next;
+        return newTokens;
     }
 
     @Transactional
@@ -211,10 +253,20 @@ public class AuthService {
         }
     }
 
-    private AuthResponse issueTokens(UserAccount user) {
+    private AuthResponse issueTokens(UserAccount user,
+                                     String userAgent,
+                                     String ipAddress) {
+
         JwtService.JwtToken access = jwtService.createAccessToken(user.getEmail());
+
         String refreshRaw = generateRefreshToken();
-        persistRefreshToken(user.getId(), refreshRaw);
+
+        persistRefreshToken(
+                user.getId(),
+                refreshRaw,
+                userAgent,
+                ipAddress
+        );
 
         return new AuthResponse(
                 access.token(),
@@ -225,36 +277,19 @@ public class AuthService {
         );
     }
 
-    private AuthResponse issueTokens(UserAccount user, String userAgent, String ipAddress) {
-        JwtService.JwtToken access = jwtService.createAccessToken(user.getEmail());
+    private void persistRefreshToken(Long userId,
+                                     String rawToken,
+                                     String userAgent,
+                                     String ipAddress) {
 
-        String refreshRaw = generateRefreshToken();
-        persistRefreshToken(user.getId(), refreshRaw, userAgent, ipAddress /*, deviceId*/);
-
-        return new AuthResponse(
-                access.token(),
-                access.expiresAt(),
-                user.getId(),
-                user.getEmail(),
-                refreshRaw
-        );
-    }
-
-    private void persistRefreshToken(Long userId, String rawToken, String userAgent, String ipAddress) {
         RefreshToken rt = new RefreshToken();
         rt.setUserId(userId);
         rt.setTokenHash(TokenHash.sha256(rawToken));
         rt.setExpiresAt(Instant.now().plus(refreshDays, ChronoUnit.DAYS));
+        rt.setLastUsedAt(Instant.now());
         rt.setUserAgent(userAgent);
         rt.setIpAddress(ipAddress);
-        refreshTokenRepository.save(rt);
-    }
 
-    private void persistRefreshToken(Long userId, String rawToken) {
-        RefreshToken rt = new RefreshToken();
-        rt.setUserId(userId);
-        rt.setTokenHash(TokenHash.sha256(rawToken));
-        rt.setExpiresAt(Instant.now().plus(refreshDays, ChronoUnit.DAYS));
         refreshTokenRepository.save(rt);
     }
 
@@ -279,5 +314,14 @@ public class AuthService {
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-|-$)", "")
                 + "-" + System.currentTimeMillis();
+    }
+
+    private void revokeAllUserSessions(Long userId, Instant now) {
+        refreshTokenRepository
+                .findByUserIdAndRevokedAtIsNull(userId)
+                .forEach(token -> {
+                    token.setRevokedAt(now);
+                    refreshTokenRepository.save(token);
+                });
     }
 }

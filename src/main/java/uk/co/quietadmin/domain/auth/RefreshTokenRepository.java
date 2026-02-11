@@ -39,4 +39,6 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
                   @Param("now") Instant now);
 
     List<RefreshToken> findAllByUserIdAndRevokedAtIsNullOrderByCreatedAtDesc(Long userId);
+
+    List<RefreshToken> findByUserIdAndRevokedAtIsNull(Long userId);
 }

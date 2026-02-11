@@ -36,27 +36,31 @@ public class AuthController {
             @CookieValue(name = "refresh_token", required = false) String refreshToken,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             @RequestHeader(value = "User-Agent", required = false) String userAgent,
-            HttpServletRequest request,
-            HttpServletResponse response) {
+            HttpServletRequest httpServletRequest,
+            HttpServletResponse httpServletResponse) {
 
         if (refreshToken == null) throw new IllegalArgumentException("Refresh token missing");
 
-        String ip = request.getRemoteAddr();
+        String ip = httpServletRequest.getRemoteAddr();
 
         AuthResponse auth = authService.refresh(refreshToken, userAgent, ip /* + deviceId if you add it */);
 
-        addRefreshCookie(response, auth.refreshToken());
+        addRefreshCookie(httpServletResponse, auth.refreshToken());
         return ResponseEntity.ok(auth.withoutRefreshToken());
     }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
             @RequestBody LoginRequest request,
-            HttpServletResponse response) {
+            @RequestHeader(value = "User-Agent", required = false) String userAgent,
+            HttpServletRequest httpServletRequest,
+            HttpServletResponse httpServletResponse) {
 
-        AuthResponse auth = authService.login(request.email(), request.password());
+        String ip = httpServletRequest.getRemoteAddr();
 
-        addRefreshCookie(response, auth.refreshToken());
+        AuthResponse auth = authService.login(request.email(), request.password(), userAgent, ip);
+
+        addRefreshCookie(httpServletResponse, auth.refreshToken());
 
         return ResponseEntity.ok(auth.withoutRefreshToken());
     }
@@ -132,9 +136,18 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(
             @RequestBody RegisterRequest request,
+            @RequestHeader(value = "User-Agent", required = false) String userAgent,
+            HttpServletRequest httpRequest,
             HttpServletResponse response) {
 
-        AuthResponse auth = authService.register(request.email(), request.password());
+        String ipAddress = httpRequest.getRemoteAddr();
+
+        AuthResponse auth = authService.register(
+                request.email(),
+                request.password(),
+                userAgent,
+                ipAddress
+        );
 
         addRefreshCookie(response, auth.refreshToken());
 
