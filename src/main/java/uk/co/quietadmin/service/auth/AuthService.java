@@ -15,6 +15,7 @@ import uk.co.quietadmin.domain.user.UserAccountRepository;
 import uk.co.quietadmin.domain.user.UserStatus;
 import uk.co.quietadmin.security.JwtService;
 import uk.co.quietadmin.security.TokenHash;
+import uk.co.quietadmin.service.mail.EmailService;
 import uk.co.quietadmin.web.auth.AuthResponse;
 import uk.co.quietadmin.web.auth.LoginThrottleService;
 import uk.co.quietadmin.web.auth.SessionResponse;
@@ -40,6 +41,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final LoginThrottleService loginThrottleService;
+    private final EmailService emailService;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -55,7 +57,7 @@ public class AuthService {
             MembershipRepository membershipRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService, LoginThrottleService loginThrottleService
+            JwtService jwtService, LoginThrottleService loginThrottleService, EmailService emailService
     ) {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
@@ -64,13 +66,15 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.loginThrottleService = loginThrottleService;
+        this.emailService = emailService;
     }
 
     @Transactional
     public AuthResponse register(String email,
                                  String rawPassword,
                                  String userAgent,
-                                 String ipAddress) {
+                                 String ipAddress,
+                                 String deviceId) {
 
         String normalizedEmail = normalizeEmail(email);
 
@@ -83,7 +87,20 @@ public class AuthService {
         UserAccount user = new UserAccount();
         user.setEmail(normalizedEmail);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
-        user.setStatus(UserStatus.ACTIVE);
+        user.setStatus(UserStatus.INVITED);
+        user.setEmailVerified(false);
+
+        String verificationRaw = generateRefreshToken();
+        String verificationHash = TokenHash.sha256(verificationRaw);
+
+        user.setEmailVerificationToken(verificationHash);
+        user = userRepository.save(user);
+
+        // Send verification email
+        emailService.sendVerificationEmail(user.getEmail(), verificationRaw);
+
+        user.setEmailVerificationExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+
         user = userRepository.save(user);
 
         // 2️⃣ Create group
@@ -101,15 +118,16 @@ public class AuthService {
         membership.setRole("ADMIN");
         membershipRepository.save(membership);
 
-        // 4️⃣ Issue tokens with device context
-        return issueTokens(user, userAgent, ipAddress);
+        // DO NOT issue tokens yet
+        return AuthResponse.verificationRequired(user.getEmail());
     }
 
     @Transactional
     public AuthResponse login(String email,
                               String rawPassword,
                               String userAgent,
-                              String ipAddress) {
+                              String ipAddress,
+                              String deviceId) {
         String normalizedEmail = normalizeEmail(email);
 
         loginThrottleService.assertLoginAllowed(normalizedEmail, ipAddress);
@@ -125,23 +143,28 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid credentials");
         }
 
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new IllegalArgumentException("Email not verified");
+        }
+
         loginThrottleService.recordSuccess(normalizedEmail, ipAddress);
 
-        return issueTokens(user, userAgent, ipAddress);
+        return issueTokens(user, userAgent, ipAddress, deviceId);
     }
 
     @Transactional
     public AuthResponse refresh(
             String rawRefreshToken,
             String userAgent,
-            String ipAddress
+            String ipAddress,
+            String deviceId
     ) {
 
         Instant now = Instant.now();
         String hash = TokenHash.sha256(rawRefreshToken);
 
         RefreshToken stored = refreshTokenRepository
-                .findByTokenHash(hash)
+                .findByTokenHashAndRevokedAtIsNull(hash)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
 
         // ---------------------------------------
@@ -162,6 +185,13 @@ public class AuthService {
             stored.setRevokedAt(now);
             refreshTokenRepository.save(stored);
             throw new IllegalArgumentException("Refresh token expired");
+        }
+
+        String incomingFingerprint = fingerprint(deviceId, userAgent, ipAddress);
+
+        if (!incomingFingerprint.equals(stored.getFingerprintHash())) {
+            revokeAllUserSessions(stored.getUserId(), now);
+            throw new IllegalArgumentException("Session anomaly detected");
         }
 
         // ---------------------------------------
@@ -193,7 +223,7 @@ public class AuthService {
         stored.setRevokedAt(now);
         stored.setLastUsedAt(now);
 
-        AuthResponse newTokens = issueTokens(user, userAgent, ipAddress);
+        AuthResponse newTokens = issueTokens(user, userAgent, ipAddress, deviceId);
 
         stored.setReplacedByTokenHash(TokenHash.sha256(newTokens.refreshToken()));
 
@@ -243,29 +273,22 @@ public class AuthService {
         }
     }
 
-    private String hash(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] encoded = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(encoded);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to hash refresh token", e);
-        }
-    }
-
-    private AuthResponse issueTokens(UserAccount user,
-                                     String userAgent,
-                                     String ipAddress) {
+    private AuthResponse issueTokens(
+            UserAccount user,
+            String userAgent,
+            String ipAddress,
+            String deviceId
+    ) {
 
         JwtService.JwtToken access = jwtService.createAccessToken(user.getEmail());
-
         String refreshRaw = generateRefreshToken();
 
         persistRefreshToken(
                 user.getId(),
                 refreshRaw,
                 userAgent,
-                ipAddress
+                ipAddress,
+                deviceId
         );
 
         return new AuthResponse(
@@ -277,10 +300,13 @@ public class AuthService {
         );
     }
 
-    private void persistRefreshToken(Long userId,
-                                     String rawToken,
-                                     String userAgent,
-                                     String ipAddress) {
+    private void persistRefreshToken(
+            Long userId,
+            String rawToken,
+            String userAgent,
+            String ipAddress,
+            String deviceId
+    ) {
 
         RefreshToken rt = new RefreshToken();
         rt.setUserId(userId);
@@ -289,8 +315,49 @@ public class AuthService {
         rt.setLastUsedAt(Instant.now());
         rt.setUserAgent(userAgent);
         rt.setIpAddress(ipAddress);
+        rt.setDeviceId(deviceId);
+        rt.setFingerprintHash(
+            fingerprint(deviceId, userAgent, ipAddress)
+        );
 
         refreshTokenRepository.save(rt);
+    }
+
+    @Transactional
+    public AuthResponse verifyEmail(String rawToken,
+                                    String userAgent,
+                                    String ipAddress,
+                                    String deviceId) {
+
+        if (rawToken == null || rawToken.isBlank()) {
+            throw new IllegalArgumentException("Invalid verification token");
+        }
+
+        String hashed = TokenHash.sha256(rawToken);
+
+        UserAccount user = userRepository
+                .findByEmailVerificationTokenAndDeletedAtIsNull(hashed)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Invalid or expired verification token")
+                );
+
+        if (user.getEmailVerificationExpiresAt() == null ||
+                user.getEmailVerificationExpiresAt().isBefore(Instant.now())) {
+            throw new IllegalArgumentException("Verification token expired");
+        }
+
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            return issueTokens(user, userAgent, ipAddress, deviceId);
+        }
+
+        user.setEmailVerified(true);
+        user.setStatus(UserStatus.ACTIVE);
+        user.setEmailVerificationToken(null);
+        user.setEmailVerificationExpiresAt(null);
+
+        userRepository.save(user);
+
+        return issueTokens(user, userAgent, ipAddress, deviceId);
     }
 
     private String generateRefreshToken() {
@@ -323,5 +390,16 @@ public class AuthService {
                     token.setRevokedAt(now);
                     refreshTokenRepository.save(token);
                 });
+    }
+
+    private String fingerprint(String deviceId, String userAgent, String ipAddress) {
+
+        String safeDevice = deviceId != null ? deviceId : "unknown-device";
+        String safeAgent = userAgent != null ? userAgent : "unknown-agent";
+        String safeIp = ipAddress != null ? ipAddress : "unknown-ip";
+
+        return TokenHash.sha256(
+                safeDevice + "|" + safeAgent + "|" + safeIp
+        );
     }
 }

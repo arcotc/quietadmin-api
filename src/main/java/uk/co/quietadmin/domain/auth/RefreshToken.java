@@ -41,6 +41,12 @@ public class RefreshToken {
     @Column(name="ip_address", length = 64)
     private String ipAddress;
 
+    @Column(name = "device_id", length = 128)
+    private String deviceId;
+
+    @Column(name = "fingerprint_hash", length = 128)
+    private String fingerprintHash;
+
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();

@@ -36,6 +36,15 @@ public class UserAccount {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "email_verified")
+    private Boolean emailVerified = false;
+
+    @Column(name = "email_verification_token")
+    private String emailVerificationToken;
+
+    @Column(name = "email_verification_expires_at")
+    private Instant emailVerificationExpiresAt;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

@@ -9,4 +9,6 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
     boolean existsByEmail(String email);
 
     Optional<UserAccount> findByEmailAndDeletedAtIsNull(String email);
+
+    Optional<UserAccount> findByEmailVerificationTokenAndDeletedAtIsNull(String token);
 }

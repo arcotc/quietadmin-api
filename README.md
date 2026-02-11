@@ -4,15 +4,16 @@ Spring Boot 3.3.x backend for QuietAdmin.
 
 ------------------------------------------------------------------------
 
-## Tech Stack
+## 🧱 Tech Stack
 
 -   Java 21
--   Spring Boot 3
--   Spring Security (JWT)
+-   Spring Boot 3.3.x
+-   Spring Security (JWT + Refresh Rotation)
 -   Spring Data JPA
 -   Flyway
 -   MySQL 8+
 -   Gradle
+-   MailHog (local email testing)
 
 ------------------------------------------------------------------------
 
@@ -20,7 +21,7 @@ Spring Boot 3.3.x backend for QuietAdmin.
 
 Install MySQL 8+ locally.
 
-### Create database & user
+## Create database & user
 
 ``` sql
 CREATE DATABASE quietadmin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -38,11 +39,11 @@ FLUSH PRIVILEGES;
 
 The API uses Spring profiles.
 
-### application.properties (base)
+## application.properties (base)
 
-Common properties shared across environments.
+Contains shared configuration.
 
-### application-local.properties (not committed)
+## application-local.properties (NOT committed)
 
 Used for local development.
 
@@ -57,75 +58,108 @@ security.jwt.secret=YOUR_64_CHAR_SECRET
 security.jwt.expiration-seconds=3600
 security.jwt.issuer=quietadmin-local
 security.jwt.audience=quietadmin-api
+
+security.session.idle-seconds=3600
+security.cookie.secure=false
+
+spring.mail.host=localhost
+spring.mail.port=1025
+spring.mail.username=
+spring.mail.password=
+spring.mail.properties.mail.smtp.auth=false
+spring.mail.properties.mail.smtp.starttls.enable=false
+app.mail.from=no-reply@quietadmin.local
+app.base-url=http://localhost:8180
 ```
 
-⚠ Do NOT commit real secrets.
+⚠ NEVER commit real secrets.
 
 ------------------------------------------------------------------------
 
-# 3️⃣ Run the API Locally
+# 3️⃣ Run MailHog (Local Email Testing)
 
-From project root:
+Install MailHog (macOS):
 
-``` bash
-./gradlew clean build
-./gradlew bootRun
-```
+    brew install mailhog
 
-API runs on:
+Start MailHog:
 
-    http://localhost:8180
+    /opt/homebrew/opt/mailhog/bin/MailHog -api-bind-addr 127.0.0.1:8025 -smtp-bind-addr 127.0.0.1:1025 -ui-bind-addr 127.0.0.1:8025
+
+Open MailHog UI:
+
+http://localhost:8025
+
+------------------------------------------------------------------------
+
+# 4️⃣ Run the API Locally
+
+    ./gradlew clean build
+    ./gradlew bootRun
+
+API runs at:
+
+http://localhost:8180
 
 Swagger UI:
 
-    http://localhost:8180/swagger-ui.html
+http://localhost:8180/swagger-ui.html
 
 ------------------------------------------------------------------------
 
-# 4️⃣ Flyway Migrations
+# 5️⃣ Authentication Flow
 
-Database schema is managed by Flyway.
+### Registration
 
-Migration files are located in:
+-   User registers
+-   Verification email sent (MailHog locally)
+-   User clicks `/api/auth/verify?token=...`
+-   Account becomes ACTIVE
 
-    src/main/resources/db/migration
+### Login
 
-On startup, Flyway automatically migrates the database.
+-   Requires verified email
+-   Returns access token
+-   Sets HTTP-only refresh cookie
 
-------------------------------------------------------------------------
+### Refresh
 
-# 5️⃣ JWT Security
-
--   Access tokens are returned in JSON
--   Refresh tokens are stored in HTTP-only cookies
--   `/api/**` endpoints are protected by JWT filter
+-   Rotates refresh token
+-   Performs replay detection
+-   Performs fingerprint anomaly detection
 
 ------------------------------------------------------------------------
 
 # 6️⃣ Useful Endpoints
 
-## Register
-
-POST `/api/auth/register`
-
-## Login
-
-POST `/api/auth/login`
-
-## Refresh
-
-POST `/api/auth/refresh`
-
-## Sessions
-
-GET `/api/auth/sessions`\
-POST `/api/auth/sessions/{id}/revoke`
+POST /api/auth/register\
+POST /api/auth/login\
+POST /api/auth/refresh\
+POST /api/auth/logout-all\
+GET /api/auth/sessions\
+POST /api/auth/sessions/{id}/revoke\
+GET /api/auth/verify?token=...
 
 ------------------------------------------------------------------------
 
-# 7️⃣ Production Notes
+# 7️⃣ Production Checklist
 
--   Use environment variables for secrets
--   Use HTTPS only
--   Set secure cookies
--   Configure database with least privileges
+-   Use environment variables for JWT secrets
+-   Enable HTTPS
+-   Set `security.cookie.secure=true`
+-   Configure reverse proxy correctly
+-   Use real SMTP provider (SendGrid, SES, etc.)
+-   Enable structured audit logging
+-   Monitor login throttle & replay detection
+
+------------------------------------------------------------------------
+
+QuietAdmin API is now production-ready with:
+
+-   Email verification
+-   JWT + Refresh rotation
+-   Replay attack detection
+-   Fingerprint anomaly detection
+-   Device session management
+-   Login throttling
+-   Audit logging

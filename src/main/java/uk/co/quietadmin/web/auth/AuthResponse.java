@@ -18,4 +18,14 @@ public record AuthResponse(
                 null
         );
     }
+
+    public static AuthResponse verificationRequired(String email) {
+        return new AuthResponse(
+                null,
+                null,
+                null,
+                email,
+                null
+        );
+    }
 }
