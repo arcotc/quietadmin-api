@@ -16,6 +16,9 @@ import uk.co.quietadmin.security.JwtService;
 import uk.co.quietadmin.security.TokenHash;
 import uk.co.quietadmin.web.auth.AuthResponse;
 
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
+
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -110,13 +113,19 @@ public class AuthService {
     @Transactional
     public AuthResponse refresh(String rawRefreshToken) {
 
-        String hash = TokenHash.sha256(rawRefreshToken);
+        String hash = hash(rawRefreshToken);
 
-        RefreshToken stored = refreshTokenRepository.findByTokenHash(hash)
+        RefreshToken stored = refreshTokenRepository
+                .findByTokenHashAndRevokedAtIsNullAndExpiresAtAfter(hash, Instant.now())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
 
         if (stored.isRevoked() || stored.isExpired()) {
             throw new IllegalArgumentException("Refresh token expired or revoked");
+        }
+
+        if (stored.getReplacedByTokenHash() != null) {
+            // possible token reuse attack
+            throw new IllegalArgumentException("Refresh token already used");
         }
 
         UserAccount user = userRepository.findById(stored.getUserId())
@@ -134,6 +143,16 @@ public class AuthService {
         refreshTokenRepository.save(stored);
 
         return response;
+    }
+
+    private String hash(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] encoded = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(encoded);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to hash refresh token", e);
+        }
     }
 
     private AuthResponse issueTokens(UserAccount user) {
