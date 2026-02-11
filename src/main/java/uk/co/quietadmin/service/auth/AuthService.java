@@ -10,6 +10,8 @@ import uk.co.quietadmin.domain.group.QaGroupRepository;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 import uk.co.quietadmin.domain.user.UserStatus;
+import uk.co.quietadmin.security.JwtService;
+import uk.co.quietadmin.web.auth.AuthResponse;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -21,27 +23,34 @@ public class AuthService {
     private final QaGroupRepository groupRepository;
     private final MembershipRepository membershipRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
     public AuthService(
             UserAccountRepository userRepository,
             QaGroupRepository groupRepository,
             MembershipRepository membershipRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService
     ) {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
         this.membershipRepository = membershipRepository;
         this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
     }
+
+    // =========================================================
+    // REGISTER
+    // =========================================================
 
     @Transactional
     public UserAccount register(String email, String rawPassword) {
 
-        String normalizedEmail = email.toLowerCase().trim();
+        String normalizedEmail = normalizeEmail(email);
 
         userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
                 .ifPresent(u -> {
-                    throw new RuntimeException("Email already registered");
+                    throw new IllegalArgumentException("Email already registered");
                 });
 
         // 1️⃣ Create user
@@ -49,6 +58,7 @@ public class AuthService {
         user.setEmail(normalizedEmail);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         user.setStatus(UserStatus.ACTIVE);
+        user.setPlatformAdmin(false);
 
         user = userRepository.save(user);
 
@@ -57,6 +67,8 @@ public class AuthService {
         group.setName(defaultGroupName(normalizedEmail));
         group.setSlug(generateSlug(normalizedEmail));
         group.setCreatedBy(user.getId());
+        group.setSubscriptionStatus("TRIAL");
+        group.setPlanType("STANDARD");
         group.setTrialEndsAt(Instant.now().plus(14, ChronoUnit.DAYS));
 
         group = groupRepository.save(group);
@@ -70,6 +82,38 @@ public class AuthService {
         membershipRepository.save(membership);
 
         return user;
+    }
+
+    // =========================================================
+    // LOGIN
+    // =========================================================
+
+    public AuthResponse login(String email, String rawPassword) {
+
+        UserAccount user = userRepository
+                .findByEmailAndDeletedAtIsNull(email.toLowerCase())
+                .orElseThrow(() -> new RuntimeException("Invalid credentials"));
+
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            throw new RuntimeException("Invalid credentials");
+        }
+
+        JwtService.JwtToken jwt = jwtService.generateToken(user.getEmail());
+
+        return new AuthResponse(
+                jwt.token(),
+                jwt.expiresAt(),
+                user.getId(),
+                user.getEmail()
+        );
+    }
+
+    // =========================================================
+    // HELPERS
+    // =========================================================
+
+    private String normalizeEmail(String email) {
+        return email.toLowerCase().trim();
     }
 
     private String defaultGroupName(String email) {
