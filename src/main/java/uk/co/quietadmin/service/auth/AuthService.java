@@ -15,6 +15,7 @@ import uk.co.quietadmin.domain.user.UserStatus;
 import uk.co.quietadmin.security.JwtService;
 import uk.co.quietadmin.security.TokenHash;
 import uk.co.quietadmin.web.auth.AuthResponse;
+import uk.co.quietadmin.web.auth.SessionResponse;
 
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.List;
 
 @Service
 public class AuthService {
@@ -91,7 +93,7 @@ public class AuthService {
         return issueTokens(user);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(String email, String rawPassword) {
 
         String normalizedEmail = normalizeEmail(email);
@@ -111,38 +113,92 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse refresh(String rawRefreshToken) {
+    public AuthResponse refresh(String rawRefreshToken, String userAgent, String ipAddress) {
 
-        String hash = hash(rawRefreshToken);
+        String hash = TokenHash.sha256(rawRefreshToken);
 
-        RefreshToken stored = refreshTokenRepository
-                .findByTokenHashAndRevokedAtIsNullAndExpiresAtAfter(hash, Instant.now())
+        RefreshToken stored = refreshTokenRepository.findByTokenHash(hash)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
 
-        if (stored.isRevoked() || stored.isExpired()) {
-            throw new IllegalArgumentException("Refresh token expired or revoked");
+        // 🔥 Replay detection:
+        // if revoked OR already rotated -> token reuse attempt
+        boolean replayAttempt =
+                stored.getRevokedAt() != null || stored.getReplacedByTokenHash() != null;
+
+        if (replayAttempt) {
+            // Lockout: revoke every active refresh token for this user
+            refreshTokenRepository.revokeAllForUser(stored.getUserId(), Instant.now());
+
+            // Optional: escalate account status
+            // userRepository.findById(stored.getUserId()).ifPresent(u -> { u.setStatus(UserStatus.SUSPENDED); userRepository.save(u); });
+
+            throw new IllegalArgumentException("Refresh token reuse detected. Signed out everywhere.");
         }
 
-        if (stored.getReplacedByTokenHash() != null) {
-            // possible token reuse attack
-            throw new IllegalArgumentException("Refresh token already used");
+        if (stored.getExpiresAt().isBefore(Instant.now())) {
+            throw new IllegalArgumentException("Refresh token expired");
         }
 
         UserAccount user = userRepository.findById(stored.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        // Rotation: revoke old token and issue a new one
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new IllegalArgumentException("Account is not active");
+        }
+
+        // rotate: revoke old
         stored.setRevokedAt(Instant.now());
         stored.setLastUsedAt(Instant.now());
+        stored.setUserAgent(userAgent);
+        stored.setIpAddress(ipAddress);
 
-        // issue new tokens
-        AuthResponse response = issueTokens(user);
+        AuthResponse next = issueTokens(user, userAgent, ipAddress);
 
-        // store linkage
-        stored.setReplacedByTokenHash(TokenHash.sha256(response.refreshToken()));
+        stored.setReplacedByTokenHash(TokenHash.sha256(next.refreshToken()));
         refreshTokenRepository.save(stored);
 
-        return response;
+        return next;
+    }
+
+    @Transactional
+    public void logoutAll(Long userId) {
+        refreshTokenRepository.revokeAllForUser(userId, Instant.now());
+    }
+
+    @Transactional(readOnly = true)
+    public List<SessionResponse> listSessions(Long userId, String currentRefreshToken) {
+
+        String currentHash = currentRefreshToken != null
+                ? TokenHash.sha256(currentRefreshToken)
+                : null;
+
+        return refreshTokenRepository
+                .findAllByUserIdAndRevokedAtIsNullOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(rt -> new SessionResponse(
+                        rt.getId(),
+                        rt.getCreatedAt(),
+                        rt.getLastUsedAt(),
+                        rt.getExpiresAt(),
+                        rt.getUserAgent(),
+                        rt.getIpAddress(),
+                        currentHash != null && currentHash.equals(rt.getTokenHash())
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public void revokeSession(Long userId, Long sessionId) {
+
+        int updated = refreshTokenRepository.revokeOne(
+                sessionId,
+                userId,
+                Instant.now()
+        );
+
+        if (updated == 0) {
+            throw new IllegalArgumentException("Session not found");
+        }
     }
 
     private String hash(String token) {
@@ -167,6 +223,31 @@ public class AuthService {
                 user.getEmail(),
                 refreshRaw
         );
+    }
+
+    private AuthResponse issueTokens(UserAccount user, String userAgent, String ipAddress) {
+        JwtService.JwtToken access = jwtService.createAccessToken(user.getEmail());
+
+        String refreshRaw = generateRefreshToken();
+        persistRefreshToken(user.getId(), refreshRaw, userAgent, ipAddress /*, deviceId*/);
+
+        return new AuthResponse(
+                access.token(),
+                access.expiresAt(),
+                user.getId(),
+                user.getEmail(),
+                refreshRaw
+        );
+    }
+
+    private void persistRefreshToken(Long userId, String rawToken, String userAgent, String ipAddress) {
+        RefreshToken rt = new RefreshToken();
+        rt.setUserId(userId);
+        rt.setTokenHash(TokenHash.sha256(rawToken));
+        rt.setExpiresAt(Instant.now().plus(refreshDays, ChronoUnit.DAYS));
+        rt.setUserAgent(userAgent);
+        rt.setIpAddress(ipAddress);
+        refreshTokenRepository.save(rt);
     }
 
     private void persistRefreshToken(Long userId, String rawToken) {
