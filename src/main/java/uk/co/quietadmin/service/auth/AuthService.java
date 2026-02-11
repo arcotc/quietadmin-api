@@ -3,6 +3,8 @@ package uk.co.quietadmin.service.auth;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uk.co.quietadmin.domain.auth.RefreshToken;
+import uk.co.quietadmin.domain.auth.RefreshTokenRepository;
 import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.group.MembershipRepository;
 import uk.co.quietadmin.domain.group.QaGroup;
@@ -11,10 +13,13 @@ import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 import uk.co.quietadmin.domain.user.UserStatus;
 import uk.co.quietadmin.security.JwtService;
+import uk.co.quietadmin.security.TokenHash;
 import uk.co.quietadmin.web.auth.AuthResponse;
 
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 
 @Service
 public class AuthService {
@@ -22,98 +27,146 @@ public class AuthService {
     private final UserAccountRepository userRepository;
     private final QaGroupRepository groupRepository;
     private final MembershipRepository membershipRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+
+    private final SecureRandom secureRandom = new SecureRandom();
+
+    // keep in config if you like
+    private final long trialDays = 14;
+
+    // should match property (or inject it)
+    private final long refreshDays = 30;
 
     public AuthService(
             UserAccountRepository userRepository,
             QaGroupRepository groupRepository,
             MembershipRepository membershipRepository,
+            RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService
     ) {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
         this.membershipRepository = membershipRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
 
-    // =========================================================
-    // REGISTER
-    // =========================================================
-
     @Transactional
-    public UserAccount register(String email, String rawPassword) {
+    public AuthResponse register(String email, String rawPassword) {
 
         String normalizedEmail = normalizeEmail(email);
 
         userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
-                .ifPresent(u -> {
-                    throw new IllegalArgumentException("Email already registered");
-                });
+                .ifPresent(u -> { throw new IllegalArgumentException("Email already registered"); });
 
-        // 1️⃣ Create user
+        // 1) Create user
         UserAccount user = new UserAccount();
         user.setEmail(normalizedEmail);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         user.setStatus(UserStatus.ACTIVE);
-        user.setPlatformAdmin(false);
-
         user = userRepository.save(user);
 
-        // 2️⃣ Create group
+        // 2) Create group
         QaGroup group = new QaGroup();
         group.setName(defaultGroupName(normalizedEmail));
         group.setSlug(generateSlug(normalizedEmail));
         group.setCreatedBy(user.getId());
-        group.setSubscriptionStatus("TRIAL");
-        group.setPlanType("STANDARD");
-        group.setTrialEndsAt(Instant.now().plus(14, ChronoUnit.DAYS));
-
+        group.setTrialEndsAt(Instant.now().plus(trialDays, ChronoUnit.DAYS));
         group = groupRepository.save(group);
 
-        // 3️⃣ Create membership as ADMIN
+        // 3) Membership as ADMIN
         Membership membership = new Membership();
         membership.setUserId(user.getId());
         membership.setGroupId(group.getId());
         membership.setRole("ADMIN");
-
         membershipRepository.save(membership);
 
-        return user;
+        return issueTokens(user);
     }
 
-    // =========================================================
-    // LOGIN
-    // =========================================================
-
+    @Transactional(readOnly = true)
     public AuthResponse login(String email, String rawPassword) {
 
-        UserAccount user = userRepository
-                .findByEmailAndDeletedAtIsNull(email.toLowerCase())
-                .orElseThrow(() -> new RuntimeException("Invalid credentials"));
+        String normalizedEmail = normalizeEmail(email);
 
-        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
-            throw new RuntimeException("Invalid credentials");
+        UserAccount user = userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new IllegalArgumentException("Account is not active");
         }
 
-        JwtService.JwtToken jwt = jwtService.generateToken(user.getEmail());
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Invalid credentials");
+        }
+
+        return issueTokens(user);
+    }
+
+    @Transactional
+    public AuthResponse refresh(String rawRefreshToken) {
+
+        String hash = TokenHash.sha256(rawRefreshToken);
+
+        RefreshToken stored = refreshTokenRepository.findByTokenHash(hash)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
+
+        if (stored.isRevoked() || stored.isExpired()) {
+            throw new IllegalArgumentException("Refresh token expired or revoked");
+        }
+
+        UserAccount user = userRepository.findById(stored.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        // Rotation: revoke old token and issue a new one
+        stored.setRevokedAt(Instant.now());
+        stored.setLastUsedAt(Instant.now());
+
+        // issue new tokens
+        AuthResponse response = issueTokens(user);
+
+        // store linkage
+        stored.setReplacedByTokenHash(TokenHash.sha256(response.refreshToken()));
+        refreshTokenRepository.save(stored);
+
+        return response;
+    }
+
+    private AuthResponse issueTokens(UserAccount user) {
+        JwtService.JwtToken access = jwtService.createAccessToken(user.getEmail());
+        String refreshRaw = generateRefreshToken();
+        persistRefreshToken(user.getId(), refreshRaw);
 
         return new AuthResponse(
-                jwt.token(),
-                jwt.expiresAt(),
+                access.token(),
+                access.expiresAt(),
                 user.getId(),
-                user.getEmail()
+                user.getEmail(),
+                refreshRaw
         );
     }
 
-    // =========================================================
-    // HELPERS
-    // =========================================================
+    private void persistRefreshToken(Long userId, String rawToken) {
+        RefreshToken rt = new RefreshToken();
+        rt.setUserId(userId);
+        rt.setTokenHash(TokenHash.sha256(rawToken));
+        rt.setExpiresAt(Instant.now().plus(refreshDays, ChronoUnit.DAYS));
+        refreshTokenRepository.save(rt);
+    }
+
+    private String generateRefreshToken() {
+        byte[] bytes = new byte[48];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
 
     private String normalizeEmail(String email) {
-        return email.toLowerCase().trim();
+        if (email == null) throw new IllegalArgumentException("Email is required");
+        return email.trim().toLowerCase();
     }
 
     private String defaultGroupName(String email) {
@@ -123,7 +176,8 @@ public class AuthService {
     private String generateSlug(String email) {
         return email.split("@")[0]
                 .toLowerCase()
-                .replaceAll("[^a-z0-9]", "-")
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-|-$)", "")
                 + "-" + System.currentTimeMillis();
     }
 }

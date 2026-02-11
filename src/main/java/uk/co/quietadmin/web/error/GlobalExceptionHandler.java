@@ -31,7 +31,7 @@ public class GlobalExceptionHandler {
         ApiError error = new ApiError(
                 Instant.now(),
                 HttpStatus.BAD_REQUEST.value(),
-                "VALIDATION_ERROR",
+                ErrorCode.VALIDATION_ERROR,
                 "Validation failed",
                 request.getRequestURI(),
                 details
@@ -59,7 +59,7 @@ public class GlobalExceptionHandler {
         ApiError error = new ApiError(
                 Instant.now(),
                 HttpStatus.BAD_REQUEST.value(),
-                "BAD_REQUEST",
+                ErrorCode.BAD_REQUEST,
                 ex.getMessage(),
                 request.getRequestURI(),
                 null
@@ -80,7 +80,7 @@ public class GlobalExceptionHandler {
         ApiError error = new ApiError(
                 Instant.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "INTERNAL_ERROR",
+                ErrorCode.INTERNAL_ERROR,
                 "An unexpected error occurred",
                 request.getRequestURI(),
                 null
@@ -88,5 +88,22 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(error);
+    }
+
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<ApiError> handleAuth(
+            Exception ex,
+            HttpServletRequest request) {
+
+        ApiError error = new ApiError(
+                Instant.now(),
+                HttpStatus.UNAUTHORIZED.value(),
+                ErrorCode.UNAUTHORIZED,
+                "Authentication failed",
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
     }
 }

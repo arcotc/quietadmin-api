@@ -1,9 +1,9 @@
 package uk.co.quietadmin.web.auth;
 
-import jakarta.validation.Valid;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.service.auth.AuthService;
 
 @RestController
@@ -16,26 +16,53 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @PostMapping("/register")
-    public ResponseEntity<RegisterResponse> register(
-            @RequestBody RegisterRequest request) {
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(
+            @CookieValue(name = "refresh_token", required = false) String refreshToken,
+            HttpServletResponse response) {
 
-        UserAccount user = authService.register(
-                request.email(),
-                request.password()
-        );
+        if (refreshToken == null) {
+            throw new IllegalArgumentException("Refresh token missing");
+        }
 
-        return ResponseEntity.ok(
-                new RegisterResponse(user.getId(), user.getEmail())
-        );
+        AuthResponse auth = authService.refresh(refreshToken);
+
+        // rotate refresh cookie
+        addRefreshCookie(response, auth.refreshToken());
+
+        return ResponseEntity.ok(auth.withoutRefreshToken());
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
-        return ResponseEntity.ok(
-                authService.login(request.email(), request.password())
-        );
+    public ResponseEntity<AuthResponse> login(
+            @RequestBody LoginRequest request,
+            HttpServletResponse response) {
+
+        AuthResponse auth = authService.login(request.email(), request.password());
+
+        addRefreshCookie(response, auth.refreshToken());
+
+        return ResponseEntity.ok(auth.withoutRefreshToken());
     }
 
-    public record LoginResponse(String token) {}
+    @PostMapping("/register")
+    public ResponseEntity<AuthResponse> register(
+            @RequestBody RegisterRequest request,
+            HttpServletResponse response) {
+
+        AuthResponse auth = authService.register(request.email(), request.password());
+
+        addRefreshCookie(response, auth.refreshToken());
+
+        return ResponseEntity.ok(auth.withoutRefreshToken());
+    }
+
+    private void addRefreshCookie(HttpServletResponse response, String refreshToken) {
+        Cookie cookie = new Cookie("refresh_token", refreshToken);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true); // true in prod
+        cookie.setPath("/api/auth");
+        cookie.setMaxAge(60 * 60 * 24 * 30); // 30 days
+        response.addCookie(cookie);
+    }
 }

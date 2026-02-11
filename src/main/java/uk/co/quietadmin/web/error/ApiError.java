@@ -6,7 +6,7 @@ import java.util.List;
 public record ApiError(
         Instant timestamp,
         int status,
-        String error,
+        ErrorCode error,
         String message,
         String path,
         List<FieldErrorDetail> details

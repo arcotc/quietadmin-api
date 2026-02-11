@@ -6,5 +6,16 @@ public record AuthResponse(
         String accessToken,
         Instant expiresAt,
         Long userId,
-        String email
-) {}
+        String email,
+        String refreshToken
+) {
+    public AuthResponse withoutRefreshToken() {
+        return new AuthResponse(
+                accessToken,
+                expiresAt,
+                userId,
+                email,
+                null
+        );
+    }
+}
