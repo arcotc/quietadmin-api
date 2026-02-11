@@ -5,6 +5,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -16,6 +18,7 @@ import java.io.IOException;
 import java.util.Collections;
 
 @Component
+@Slf4j
 public class JwtAuthenticationFilter extends org.springframework.web.filter.OncePerRequestFilter {
 
     private final JwtService jwtService;
@@ -32,6 +35,21 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
+        if (HttpMethod.OPTIONS.matches(request.getMethod())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        String path = request.getServletPath();
+
+        if (path.equals("/api/auth/login") ||
+                path.equals("/api/auth/register") ||
+                path.equals("/api/auth/verify") ||
+                path.equals("/api/auth/refresh")) {
+
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         String header = request.getHeader("Authorization");
 
@@ -42,12 +60,17 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
 
         String token = header.substring(7);
 
+        log.debug("Token valid: " + jwtService.isValid(token));
+
         if (!jwtService.isValid(token)) {
             filterChain.doFilter(request, response);
             return;
         }
 
         Claims claims = jwtService.parseClaims(token);
+
+        log.debug("Audience in token: " + claims.getAudience());
+        log.debug("Expected audience: " + jwtService.getAudience());
 
         // Manual audience check
         if (claims.getAudience() == null ||
