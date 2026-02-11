@@ -37,6 +37,9 @@ dependencies {
 	implementation "org.flywaydb:flyway-core:${flywayVersion}"
 	implementation "org.flywaydb:flyway-mysql:${flywayVersion}"
 
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
 	runtimeOnly 'com.mysql:mysql-connector-j'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
