@@ -39,4 +39,9 @@ public class Notice {
         createdAt = Instant.now();
         updatedAt = Instant.now();
     }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }
