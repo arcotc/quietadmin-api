@@ -34,5 +34,9 @@ public class Notice {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
-    // getters only (immutability bias)
+    @PrePersist
+    void onCreate() {
+        createdAt = Instant.now();
+        updatedAt = Instant.now();
+    }
 }

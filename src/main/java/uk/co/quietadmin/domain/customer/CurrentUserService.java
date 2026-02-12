@@ -7,6 +7,8 @@ import uk.co.quietadmin.domain.group.MembershipRepository;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 
+import org.springframework.security.access.AccessDeniedException;
+
 @Service
 @RequiredArgsConstructor
 public class CurrentUserService {
@@ -24,9 +26,20 @@ public class CurrentUserService {
                 .orElseThrow();
     }
 
-    public Long getCurrentUserId(String email) {
-        return userRepo.findByEmail(email)
-                .map(UserAccount::getId)
+    public Membership getMembership(String email) {
+
+        UserAccount user = userRepo.findByEmail(email)
                 .orElseThrow();
+
+        return membershipRepo.findByUserId(user.getId())
+                .orElseThrow();
+    }
+
+    public void requireAdmin(String email) throws AccessDeniedException {
+        Membership membership = getMembership(email);
+
+        if (!membership.isAdmin()) {
+            throw new AccessDeniedException("Admin access required.");
+        }
     }
 }

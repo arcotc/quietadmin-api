@@ -33,4 +33,8 @@ public class Membership {
     void onCreate() {
         joinedAt = Instant.now();
     }
+
+    public boolean isAdmin() {
+        return "ADMIN".equalsIgnoreCase(role);
+    }
 }
