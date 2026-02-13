@@ -41,6 +41,9 @@ public class QaGroup {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "expiry_reminder_hours")
+    private Integer expiryReminderHours;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

@@ -5,6 +5,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.group.MembershipRepository;
+import uk.co.quietadmin.domain.group.QaGroup;
+import uk.co.quietadmin.domain.group.QaGroupRepository;
 import uk.co.quietadmin.domain.notice.Notice;
 import uk.co.quietadmin.domain.notice.NoticeRepository;
 import uk.co.quietadmin.domain.user.UserAccount;
@@ -23,47 +25,69 @@ public class NoticeExpiryReminderJob {
     private final MembershipRepository membershipRepository;
     private final UserAccountRepository userRepository;
     private final EmailService emailService;
+    private final QaGroupRepository qaGroupRepository;
 
     @Scheduled(fixedDelay = 60_000)
     public void sendExpiryReminders() {
 
         Instant now = Instant.now();
-        Instant in24Hours = now.plus(24, ChronoUnit.HOURS);
 
-        List<Notice> notices =
-                noticeRepository.findNoticesExpiringBetween(now, in24Hours);
+        // Find all groups that have reminders enabled
+        List<QaGroup> groups = qaGroupRepository.findByExpiryReminderHoursIsNotNull();
 
-        for (Notice notice : notices) {
+        for (QaGroup group : groups) {
 
-            // Mark FIRST to prevent double-send if multi-instance
-            notice.setExpiryReminderSentAt(Instant.now());
-            noticeRepository.save(notice);
+            Integer hours = group.getExpiryReminderHours();
 
-            List<Membership> admins =
-                    membershipRepository.findByGroupIdAndRole(
-                            notice.getGroupId(),
-                            "ADMIN"
+            if (hours == null || hours <= 0) continue;
+
+            Instant reminderCutoff =
+                    now.plus(hours, ChronoUnit.HOURS);
+
+            List<Notice> notices =
+                    noticeRepository.findNoticesExpiringBetweenForGroup(
+                            group.getId(),
+                            now,
+                            reminderCutoff
                     );
 
-            // 👇 THIS IS WHERE YOUR NEW CODE GOES
-            List<Long> adminIds = admins.stream()
-                    .map(Membership::getUserId)
-                    .toList();
+            for (Notice notice : notices) {
 
-            if (adminIds.isEmpty()) {
-                continue;
+                notice.setExpiryReminderSentAt(now);
+                noticeRepository.save(notice);
+
+                notifyAdmins(group.getId(), notice);
             }
+        }
+    }
 
-            List<UserAccount> users =
-                    userRepository.findByIdIn(adminIds);
+    private void notifyAdmins(Long groupId, Notice notice) {
 
-            for (UserAccount user : users) {
-                emailService.sendNoticeExpiryReminder(
-                        user.getEmail(),
-                        user.getFirstName(),
-                        notice
+        List<Membership> admins =
+                membershipRepository.findByGroupIdAndRole(
+                        groupId,
+                        "ADMIN"
                 );
-            }
+
+        if (admins.isEmpty()) return;
+
+        List<Long> adminIds = admins.stream()
+                .map(Membership::getUserId)
+                .toList();
+
+        List<UserAccount> users =
+                userRepository.findByIdIn(adminIds);
+
+        for (UserAccount user : users) {
+
+            // Skip deleted or inactive users defensively
+            if (!"ACTIVE".equals(user.getStatus())) continue;
+
+            emailService.sendNoticeExpiryReminder(
+                    user.getEmail(),
+                    user.getFirstName(),
+                    notice
+            );
         }
     }
 }

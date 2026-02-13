@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface NoticeRepository extends JpaRepository<Notice, Long> {
+
     Optional<Notice> findByIdAndGroupId(Long id, Long groupId);
 
     @Query("""
@@ -21,8 +22,10 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
           n.expiresAt ASC,
           n.createdAt DESC
     """)
-    List<Notice> findActiveNotices(@Param("groupId") Long groupId,
-                                   @Param("now") Instant now);
+    List<Notice> findActiveNotices(
+            @Param("groupId") Long groupId,
+            @Param("now") Instant now
+    );
 
     @Query("""
         SELECT n FROM Notice n
@@ -44,13 +47,15 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
 
     @Query("""
         SELECT n FROM Notice n
-        WHERE n.status = 'ACTIVE'
+        WHERE n.groupId = :groupId
+          AND n.status = uk.co.quietadmin.domain.notice.NoticeStatus.ACTIVE
           AND n.expiresAt IS NOT NULL
           AND n.expiryReminderSentAt IS NULL
           AND n.expiresAt BETWEEN :from AND :to
     """)
-    List<Notice> findNoticesExpiringBetween(
-            Instant from,
-            Instant to
+    List<Notice> findNoticesExpiringBetweenForGroup(
+            @Param("groupId") Long groupId,
+            @Param("from") Instant from,
+            @Param("to") Instant to
     );
 }
