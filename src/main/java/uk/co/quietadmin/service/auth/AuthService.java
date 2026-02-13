@@ -72,6 +72,8 @@ public class AuthService {
     @Transactional
     public AuthResponse register(String email,
                                  String rawPassword,
+                                 String firstName,
+                                 String lastName,
                                  String userAgent,
                                  String ipAddress,
                                  String deviceId) {
@@ -87,6 +89,8 @@ public class AuthService {
         UserAccount user = new UserAccount();
         user.setEmail(normalizedEmail);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
         user.setStatus(UserStatus.INVITED);
         user.setEmailVerified(false);
 
@@ -145,6 +149,10 @@ public class AuthService {
 
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new IllegalArgumentException("Email not verified");
+        }
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new IllegalArgumentException("Account not active");
         }
 
         loginThrottleService.recordSuccess(normalizedEmail, ipAddress);
@@ -291,12 +299,14 @@ public class AuthService {
                 deviceId
         );
 
-        return new AuthResponse(
+        return AuthResponse.success(
                 access.token(),
+                refreshRaw,
                 access.expiresAt(),
                 user.getId(),
                 user.getEmail(),
-                refreshRaw
+                user.getFirstName(),
+                user.getLastName()
         );
     }
 

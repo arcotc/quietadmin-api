@@ -17,6 +17,12 @@ public class UserAccount {
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Column(name = "last_name")
+    private String lastName;
+
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 

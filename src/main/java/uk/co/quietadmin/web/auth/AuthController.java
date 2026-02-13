@@ -84,6 +84,8 @@ public class AuthController {
         AuthResponse auth = authService.register(
                 request.email(),
                 request.password(),
+                request.firstName(),
+                request.lastName(),
                 userAgent,
                 ip,
                 deviceId
