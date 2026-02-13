@@ -34,10 +34,15 @@ public class Notice {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private NoticeStatus status = NoticeStatus.DRAFT;
+
     @PrePersist
     void onCreate() {
         createdAt = Instant.now();
         updatedAt = Instant.now();
+        if (status == null) status = NoticeStatus.DRAFT;
     }
 
     @PreUpdate

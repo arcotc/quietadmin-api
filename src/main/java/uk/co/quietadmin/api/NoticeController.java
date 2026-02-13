@@ -6,8 +6,6 @@ import org.springframework.web.bind.annotation.*;
 import uk.co.quietadmin.domain.customer.CurrentUserService;
 import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.notice.Notice;
-
-import org.springframework.security.access.AccessDeniedException;
 import uk.co.quietadmin.service.notice.NoticeService;
 
 import java.security.Principal;
@@ -24,13 +22,15 @@ public class NoticeController {
 
     @GetMapping("/active")
     public ResponseEntity<List<Notice>> active(Principal principal) {
+        Membership membership = currentUserService.getMembership(principal.getName());
+        return ResponseEntity.ok(noticeService.getActiveNotices(membership.getGroupId()));
+    }
 
-        Membership membership =
-                currentUserService.getMembership(principal.getName());
-
-        return ResponseEntity.ok(noticeService.getActiveNotices(
-                membership.getGroupId()
-        ));
+    @GetMapping("/drafts")
+    public ResponseEntity<List<Notice>> drafts(Principal principal) {
+        currentUserService.requireAdmin(principal.getName());
+        Membership membership = currentUserService.getMembership(principal.getName());
+        return ResponseEntity.ok(noticeService.getDrafts(membership.getGroupId()));
     }
 
     @PostMapping
@@ -40,8 +40,7 @@ public class NoticeController {
     ) {
         currentUserService.requireAdmin(principal.getName());
 
-        Membership membership =
-                currentUserService.getMembership(principal.getName());
+        Membership membership = currentUserService.getMembership(principal.getName());
 
         Notice notice = new Notice();
         notice.setGroupId(membership.getGroupId());
@@ -59,38 +58,41 @@ public class NoticeController {
             @PathVariable Long id,
             @RequestBody UpdateNoticeRequest request
     ) {
-        try {
-            currentUserService.requireAdmin(principal.getName());
+        currentUserService.requireAdmin(principal.getName());
 
-            Membership membership =
-                    currentUserService.getMembership(principal.getName());
+        Membership membership = currentUserService.getMembership(principal.getName());
 
-            return ResponseEntity.ok(noticeService.update(
-                    id,
-                    membership.getGroupId(),
-                    request.title(),
-                    request.content(),
-                    request.expiresAt()
-            ));
-        } catch (AccessDeniedException e) {
-            return ResponseEntity.status(403).build();
-        }
+        return ResponseEntity.ok(
+                noticeService.update(
+                        id,
+                        membership.getGroupId(),
+                        request.title(),
+                        request.content(),
+                        request.expiresAt()
+                )
+        );
+    }
+
+    @PostMapping("/{id}/publish")
+    public ResponseEntity<Notice> publish(Principal principal, @PathVariable Long id) {
+        currentUserService.requireAdmin(principal.getName());
+        Membership membership = currentUserService.getMembership(principal.getName());
+        return ResponseEntity.ok(noticeService.publish(id, membership.getGroupId()));
+    }
+
+    @PostMapping("/{id}/unpublish")
+    public ResponseEntity<Notice> unpublish(Principal principal, @PathVariable Long id) {
+        currentUserService.requireAdmin(principal.getName());
+        Membership membership = currentUserService.getMembership(principal.getName());
+        return ResponseEntity.ok(noticeService.unpublish(id, membership.getGroupId()));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(
-            Principal principal,
-            @PathVariable Long id
-    ) {
-        try {
-            currentUserService.requireAdmin(principal.getName());
+    public ResponseEntity<Void> delete(Principal principal, @PathVariable Long id) {
+        currentUserService.requireAdmin(principal.getName());
 
-            Membership membership = currentUserService.getMembership(principal.getName());
-
-            noticeService.delete(id, membership.getGroupId());
-        } catch (AccessDeniedException e) {
-            return ResponseEntity.status(403).build();
-        }
+        Membership membership = currentUserService.getMembership(principal.getName());
+        noticeService.delete(id, membership.getGroupId());
 
         return ResponseEntity.noContent().build();
     }

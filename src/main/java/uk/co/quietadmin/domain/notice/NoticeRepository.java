@@ -14,14 +14,29 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
     @Query("""
         SELECT n FROM Notice n
         WHERE n.groupId = :groupId
-        AND (n.expiresAt IS NULL OR n.expiresAt > :now)
+          AND n.status = uk.co.quietadmin.domain.notice.NoticeStatus.ACTIVE
+          AND (n.expiresAt IS NULL OR n.expiresAt > :now)
         ORDER BY
-            CASE WHEN n.expiresAt IS NULL THEN 1 ELSE 0 END,
-            n.expiresAt ASC,
-            n.createdAt DESC
+          CASE WHEN n.expiresAt IS NULL THEN 1 ELSE 0 END,
+          n.expiresAt ASC,
+          n.createdAt DESC
     """)
-    List<Notice> findActiveNotices(
-            @Param("groupId") Long groupId,
-            @Param("now") Instant now
-    );
+    List<Notice> findActiveNotices(@Param("groupId") Long groupId,
+                                   @Param("now") Instant now);
+
+    @Query("""
+        SELECT n FROM Notice n
+        WHERE n.groupId = :groupId
+          AND n.status = uk.co.quietadmin.domain.notice.NoticeStatus.DRAFT
+        ORDER BY n.updatedAt DESC
+    """)
+    List<Notice> findDraftNotices(@Param("groupId") Long groupId);
+
+    @Query("""
+        SELECT n FROM Notice n
+        WHERE n.status = uk.co.quietadmin.domain.notice.NoticeStatus.ACTIVE
+          AND n.expiresAt IS NOT NULL
+          AND n.expiresAt <= :now
+    """)
+    List<Notice> findActiveButExpired(@Param("now") Instant now);
 }

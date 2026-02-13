@@ -6,6 +6,8 @@ import uk.co.quietadmin.domain.notice.Notice;
 import uk.co.quietadmin.domain.notice.NoticeRepository;
 
 import org.springframework.security.access.AccessDeniedException;
+import uk.co.quietadmin.domain.notice.NoticeStatus;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -20,6 +22,9 @@ public class NoticeService {
     }
 
     public Notice create(Notice notice) {
+        if (notice.getStatus() == null) {
+            notice.setStatus(NoticeStatus.DRAFT);
+        }
         return noticeRepository.save(notice);
     }
 
@@ -47,5 +52,33 @@ public class NoticeService {
         }
 
         noticeRepository.delete(n);
+    }
+
+    public Notice publish(Long id, Long groupId) {
+        Notice n = noticeRepository.findByIdAndGroupId(id, groupId)
+                .orElseThrow(() -> new AccessDeniedException("Not your group"));
+
+        if (n.getStatus() == NoticeStatus.EXPIRED) {
+            throw new IllegalStateException("Cannot publish an expired notice.");
+        }
+
+        n.setStatus(NoticeStatus.ACTIVE);
+        return noticeRepository.save(n);
+    }
+
+    public Notice unpublish(Long id, Long groupId) {
+        Notice n = noticeRepository.findByIdAndGroupId(id, groupId)
+                .orElseThrow(() -> new AccessDeniedException("Not your group"));
+
+        if (n.getStatus() == NoticeStatus.EXPIRED) {
+            throw new IllegalStateException("Cannot unpublish an expired notice.");
+        }
+
+        n.setStatus(NoticeStatus.DRAFT);
+        return noticeRepository.save(n);
+    }
+
+    public List<Notice> getDrafts(Long groupId) {
+        return noticeRepository.findDraftNotices(groupId);
     }
 }
