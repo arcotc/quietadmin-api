@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name"/>
+
+    <!-- Console JSON appender (Promtail friendly) -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>
+                { "app": "${APP_NAME}" }
+            </customFields>
+        </encoder>
+    </appender>
+
+    <!-- Plain console appender (useful locally) -->
+    <appender name="PLAIN_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>
+                %d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
+            </pattern>
+        </encoder>
+    </appender>
+
+    <!-- ============================= -->
+    <!-- LOG LEVELS -->
+    <!-- ============================= -->
+
+    <!-- Your application -->
+    <logger name="uk.co.quietadmin" level="TRACE"/>
+
+    <!-- Hibernate -->
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.type.descriptor.sql" level="WARN"/>
+    <logger name="org.springframework.orm.jpa" level="WARN"/>
+
+    <!-- Security (set DEBUG only if troubleshooting) -->
+    <logger name="org.springframework.security" level="INFO"/>
+
+    <logger name="org.springframework.web.filter.CommonsRequestLoggingFilter" level="INFO"/>
+
+    <!-- Root -->
+    <root level="INFO">
+        <appender-ref ref="JSON_CONSOLE"/>
+    </root>
+
+</configuration>
