@@ -81,4 +81,8 @@ public class NoticeService {
     public List<Notice> getDrafts(Long groupId) {
         return noticeRepository.findDraftNotices(groupId);
     }
+
+    public List<Notice> getAllForGroup(Long groupId) {
+        return noticeRepository.findByGroupIdOrderByUpdatedAtDesc(groupId);
+    }
 }

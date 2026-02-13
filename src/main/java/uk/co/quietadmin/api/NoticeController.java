@@ -97,6 +97,15 @@ public class NoticeController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping
+    public ResponseEntity<List<Notice>> all(Principal principal) {
+        currentUserService.requireAdmin(principal.getName());
+        Membership membership = currentUserService.getMembership(principal.getName());
+        return ResponseEntity.ok(
+                noticeService.getAllForGroup(membership.getGroupId())
+        );
+    }
+
     public record CreateNoticeRequest(
             String title,
             String content,

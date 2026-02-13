@@ -39,4 +39,6 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
           AND n.expiresAt <= :now
     """)
     List<Notice> findActiveButExpired(@Param("now") Instant now);
+
+    List<Notice> findByGroupIdOrderByUpdatedAtDesc(Long groupId);
 }
