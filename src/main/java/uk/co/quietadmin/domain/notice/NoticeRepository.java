@@ -41,4 +41,16 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
     List<Notice> findActiveButExpired(@Param("now") Instant now);
 
     List<Notice> findByGroupIdOrderByUpdatedAtDesc(Long groupId);
+
+    @Query("""
+        SELECT n FROM Notice n
+        WHERE n.status = 'ACTIVE'
+          AND n.expiresAt IS NOT NULL
+          AND n.expiryReminderSentAt IS NULL
+          AND n.expiresAt BETWEEN :from AND :to
+    """)
+    List<Notice> findNoticesExpiringBetween(
+            Instant from,
+            Instant to
+    );
 }

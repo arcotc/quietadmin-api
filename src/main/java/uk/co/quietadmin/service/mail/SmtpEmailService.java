@@ -2,12 +2,18 @@ package uk.co.quietadmin.service.mail;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import uk.co.quietadmin.domain.notice.Notice;
+
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 @Service
+@RequiredArgsConstructor
 public class SmtpEmailService implements EmailService {
 
     private final JavaMailSender mailSender;
@@ -18,9 +24,9 @@ public class SmtpEmailService implements EmailService {
     @Value("${app.mail.base-url}")
     private String baseUrl;
 
-    public SmtpEmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
-    }
+    /* ======================================================
+       VERIFICATION EMAIL
+       ====================================================== */
 
     @Override
     public void sendVerificationEmail(String toEmail, String verificationToken) {
@@ -32,6 +38,49 @@ public class SmtpEmailService implements EmailService {
 
         String html = buildVerificationTemplate(verificationLink);
 
+        sendHtmlEmail(toEmail, subject, html);
+    }
+
+    /* ======================================================
+       NOTICE EXPIRY REMINDER
+       ====================================================== */
+
+    @Override
+    public void sendNoticeExpiryReminder(
+            String toEmail,
+            String firstName,
+            Notice notice
+    ) {
+
+        String subject = "Notice expiring tomorrow";
+
+        DateTimeFormatter formatter =
+                DateTimeFormatter.ofPattern("EEEE d MMMM yyyy 'at' HH:mm")
+                        .withZone(ZoneId.of("Europe/London"));
+
+        String formattedExpiry =
+                notice.getExpiresAt() != null
+                        ? formatter.format(notice.getExpiresAt())
+                        : "soon";
+
+        String html = buildExpiryReminderTemplate(
+                firstName,
+                notice.getTitle(),
+                formattedExpiry
+        );
+
+        sendHtmlEmail(toEmail, subject, html);
+    }
+
+    /* ======================================================
+       INTERNAL SEND METHOD
+       ====================================================== */
+
+    private void sendHtmlEmail(
+            String toEmail,
+            String subject,
+            String html
+    ) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper =
@@ -45,9 +94,13 @@ public class SmtpEmailService implements EmailService {
             mailSender.send(message);
 
         } catch (MessagingException e) {
-            throw new IllegalStateException("Failed to send verification email", e);
+            throw new IllegalStateException("Failed to send email", e);
         }
     }
+
+    /* ======================================================
+       TEMPLATES
+       ====================================================== */
 
     private String buildVerificationTemplate(String link) {
 
@@ -68,5 +121,48 @@ public class SmtpEmailService implements EmailService {
                 </body>
                 </html>
                 """.formatted(link);
+    }
+
+    private String buildExpiryReminderTemplate(
+            String firstName,
+            String noticeTitle,
+            String expiry
+    ) {
+
+        String greeting =
+                (firstName != null && !firstName.isBlank())
+                        ? "Hi " + firstName + ","
+                        : "Hello,";
+
+        return """
+                <html>
+                <body style="font-family: Arial, sans-serif;">
+                    <h2>Notice Expiring Soon</h2>
+
+                    <p>%s</p>
+
+                    <p>Your notice <strong>"%s"</strong> is scheduled to expire on:</p>
+
+                    <p style="font-size:16px;font-weight:600;">
+                        %s
+                    </p>
+
+                    <p>
+                        If it is still relevant, you can extend or update it
+                        from the QuietAdmin dashboard.
+                    </p>
+
+                    <hr style="margin:30px 0;border:none;border-top:1px solid #eee;"/>
+
+                    <p style="font-size:12px;color:#666;">
+                        QuietAdmin — No messaging. No feeds. Just clarity.
+                    </p>
+                </body>
+                </html>
+                """.formatted(
+                greeting,
+                noticeTitle,
+                expiry
+        );
     }
 }

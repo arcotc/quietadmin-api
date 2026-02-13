@@ -38,6 +38,9 @@ public class Notice {
     @Column(nullable = false)
     private NoticeStatus status = NoticeStatus.DRAFT;
 
+    @Column(name = "expiry_reminder_sent_at")
+    private Instant expiryReminderSentAt;
+
     @PrePersist
     void onCreate() {
         createdAt = Instant.now();
