@@ -1,5 +1,6 @@
 package uk.co.quietadmin.service.notice;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -16,14 +17,9 @@ public class NoticeExpiryJob {
 
     private final NoticeRepository noticeRepository;
 
-    @Scheduled(fixedDelay = 300_000) // every 5 minutes
+    @Scheduled(fixedDelay = 300_000)
+    @Transactional
     public void expireNotices() {
-        Instant now = Instant.now();
-        List<Notice> toExpire = noticeRepository.findActiveButExpired(now);
-
-        for (Notice n : toExpire) {
-            n.setStatus(NoticeStatus.EXPIRED);
-            noticeRepository.save(n);
-        }
+        noticeRepository.bulkExpire(Instant.now());
     }
 }

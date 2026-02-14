@@ -83,6 +83,6 @@ public class NoticeService {
     }
 
     public List<Notice> getAllForGroup(Long groupId) {
-        return noticeRepository.findByGroupIdOrderByUpdatedAtDesc(groupId);
+        return noticeRepository.findByGroupIdOrdered(groupId);
     }
 }
