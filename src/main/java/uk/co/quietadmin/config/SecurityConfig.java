@@ -74,7 +74,8 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/register",
                                 "/api/auth/verify",
-                                "/api/auth/refresh"
+                                "/api/auth/refresh",
+                                "/api/stripe/webhook"
                         ).permitAll()
                         .requestMatchers("/api/auth/sessions/**").authenticated()
                         .requestMatchers("/api/auth/logout-all").authenticated()

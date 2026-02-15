@@ -23,11 +23,13 @@ public class QaGroup {
     @Column(name = "created_by", nullable = false)
     private Long createdBy;
 
-    @Column(name = "subscription_status", nullable = false)
-    private String subscriptionStatus = "TRIAL";
-
+    @Enumerated(EnumType.STRING)
     @Column(name = "plan_type", nullable = false)
-    private String planType = "STANDARD";
+    private PlanType planType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "subscription_status", nullable = false)
+    private SubscriptionStatus subscriptionStatus;
 
     @Column(name = "trial_ends_at")
     private Instant trialEndsAt;

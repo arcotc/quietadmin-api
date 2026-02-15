@@ -163,3 +163,29 @@ QuietAdmin API is now production-ready with:
 -   Device session management
 -   Login throttling
 -   Audit logging
+
+------------------------------------------------------------------------
+
+# API Steps to register user:
+/api/auth/register
+
+X-Device-Id: test-swagger
+
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36
+```
+{
+  "email": "admin@quietadmin.co.uk",
+  "password": "12345678",
+  "firstName": "Mark",
+  "lastName": "Hunter"
+}
+```
+
+/api/auth/verify
+
+token: <non encrypted token - see email>
+
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36
+
+X-Device-Id: test-swagger
+

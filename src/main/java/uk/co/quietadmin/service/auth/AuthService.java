@@ -6,10 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.co.quietadmin.domain.auth.RefreshToken;
 import uk.co.quietadmin.domain.auth.RefreshTokenRepository;
-import uk.co.quietadmin.domain.group.Membership;
-import uk.co.quietadmin.domain.group.MembershipRepository;
-import uk.co.quietadmin.domain.group.QaGroup;
-import uk.co.quietadmin.domain.group.QaGroupRepository;
+import uk.co.quietadmin.domain.group.*;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 import uk.co.quietadmin.domain.user.UserStatus;
@@ -28,6 +25,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AuthService {
@@ -42,6 +40,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final LoginThrottleService loginThrottleService;
     private final EmailService emailService;
+    private final SubscriptionGuardService subscriptionGuardService;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -57,7 +56,7 @@ public class AuthService {
             MembershipRepository membershipRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService, LoginThrottleService loginThrottleService, EmailService emailService
+            JwtService jwtService, LoginThrottleService loginThrottleService, EmailService emailService, SubscriptionGuardService subscriptionGuardService
     ) {
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
@@ -67,6 +66,7 @@ public class AuthService {
         this.jwtService = jwtService;
         this.loginThrottleService = loginThrottleService;
         this.emailService = emailService;
+        this.subscriptionGuardService = subscriptionGuardService;
     }
 
     @Transactional
@@ -155,6 +155,21 @@ public class AuthService {
             throw new IllegalArgumentException("Account not active");
         }
 
+        Optional<Membership> membership = membershipRepository
+                .findByUserId(user.getId());
+
+        if (membership.isEmpty()) {
+            throw new IllegalStateException("User has no group membership");
+        }
+
+        QaGroup group = groupRepository
+                .findById(membership.get().getGroupId())
+                .orElseThrow(() ->
+                        new IllegalStateException("Group not found")
+                );
+
+        subscriptionGuardService.assertSubscriptionActive(group);
+
         loginThrottleService.recordSuccess(normalizedEmail, ipAddress);
 
         return issueTokens(user, userAgent, ipAddress, deviceId);
@@ -224,6 +239,16 @@ public class AuthService {
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new IllegalArgumentException("Account not active");
         }
+
+        Membership membership = membershipRepository
+                .findByUserId(user.getId())
+                .orElseThrow(() -> new IllegalStateException("Membership missing"));
+
+        QaGroup group = groupRepository
+                .findById(membership.getGroupId())
+                .orElseThrow(() -> new IllegalStateException("Group not found"));
+
+        subscriptionGuardService.assertSubscriptionActive(group);
 
         // ---------------------------------------
         // 5️⃣ Rotate token

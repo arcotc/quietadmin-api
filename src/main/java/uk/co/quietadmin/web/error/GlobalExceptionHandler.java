@@ -1,6 +1,7 @@
 package uk.co.quietadmin.web.error;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -11,6 +12,7 @@ import org.springframework.security.access.AccessDeniedException;
 import java.time.Instant;
 import java.util.List;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -37,6 +39,8 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 details
         );
+
+        logError(ex, error);
 
         return ResponseEntity.badRequest().body(error);
     }
@@ -66,6 +70,8 @@ public class GlobalExceptionHandler {
                 null
         );
 
+        logError(ex, error);
+
         return ResponseEntity.badRequest().body(error);
     }
 
@@ -87,6 +93,8 @@ public class GlobalExceptionHandler {
                 null
         );
 
+        logError(ex, error);
+
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(error);
     }
@@ -105,6 +113,8 @@ public class GlobalExceptionHandler {
                 null
         );
 
+        logError(ex, error);
+
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
     }
 
@@ -113,7 +123,21 @@ public class GlobalExceptionHandler {
             AccessDeniedException ex,
             HttpServletRequest request
     ) {
+        logError(ex);
+
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ApiError(Instant.now(), 403, ErrorCode.UNAUTHORIZED, ex.getMessage(), request.getRequestURI(), null));
     }
+
+    private static void logError(Exception ex) {
+        logError(ex, null);
+    }
+
+    private static void logError(Exception ex, ApiError error) {
+        log.error("An unexpected error occurred", ex);
+        if (error != null) {
+            log.info("Error details: {}", error);
+        }
+    }
+
 }
