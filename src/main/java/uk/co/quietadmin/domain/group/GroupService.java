@@ -1,0 +1,103 @@
+package uk.co.quietadmin.domain.group;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import uk.co.quietadmin.domain.group.*;
+import uk.co.quietadmin.domain.group.dto.GroupDto;
+import uk.co.quietadmin.domain.group.dto.MemberDto;
+import uk.co.quietadmin.domain.user.UserAccount;
+import uk.co.quietadmin.domain.user.UserAccountRepository;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class GroupService {
+
+    private final GroupRepository groupRepository;
+    private final MembershipRepository membershipRepository;
+    private final UserAccountRepository userRepository;
+
+    /* ======================================================
+       GROUP DETAILS
+       ====================================================== */
+
+    @Transactional(readOnly = true)
+    public GroupDto getGroup(Long groupId) {
+
+        QaGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalStateException("Group not found"));
+
+        return new GroupDto(
+                group.getId(),
+                group.getName(),
+                group.getDescription()
+        );
+    }
+
+    @Transactional
+    public GroupDto updateGroup(Long groupId, String name, String description) {
+
+        QaGroup group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalStateException("Group not found"));
+
+        group.setName(name);
+        group.setDescription(description);
+
+        return new GroupDto(
+                group.getId(),
+                group.getName(),
+                group.getDescription()
+        );
+    }
+
+    /* ======================================================
+       MEMBERS
+       ====================================================== */
+
+    @Transactional(readOnly = true)
+    public List<MemberDto> getMembers(Long groupId) {
+
+        List<Membership> memberships =
+                membershipRepository.findByGroupId(groupId);
+
+        return memberships.stream()
+                .map(m -> {
+                    UserAccount user = userRepository.findById(m.getUserId())
+                            .orElseThrow(() -> new IllegalStateException("User not found"));
+
+                    return new MemberDto(
+                            user.getId(),
+                            user.getFirstName() + " " + user.getLastName(),
+                            user.getEmail(),
+                            m.getRole()
+                    );
+                })
+                .toList();
+    }
+
+    @Transactional
+    public void promoteToAdmin(Long groupId, Long userId) {
+
+        Membership membership = membershipRepository
+                .findByGroupIdAndUserId(groupId, userId)
+                .orElseThrow(() -> new IllegalStateException("Membership not found"));
+
+        membership.setRole(MembershipRole.ADMIN.name());
+    }
+
+    @Transactional
+    public void removeMember(Long groupId, Long userId, Long currentUserId) {
+
+        if (userId.equals(currentUserId)) {
+            throw new IllegalStateException("You cannot remove yourself from the group.");
+        }
+
+        Membership membership = membershipRepository
+                .findByGroupIdAndUserId(groupId, userId)
+                .orElseThrow(() -> new IllegalStateException("Membership not found"));
+
+        membershipRepository.delete(membership);
+    }
+}

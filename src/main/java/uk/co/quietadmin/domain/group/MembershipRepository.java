@@ -9,4 +9,8 @@ public interface MembershipRepository extends JpaRepository<Membership, Long> {
     Optional<Membership> findByUserId(Long id);
 
     List<Membership> findByGroupIdAndRole(Long groupId, String role);
+
+    List<Membership> findByGroupId(Long groupId);
+
+    Optional<Membership> findByGroupIdAndUserId(Long groupId, Long userId);
 }

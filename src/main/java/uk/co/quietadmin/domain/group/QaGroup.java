@@ -21,6 +21,9 @@ public class QaGroup {
     @Column(nullable = false)
     private String name;
 
+    @Column(length = 500)
+    private String description;
+
     @Column(nullable = false, unique = true)
     private String slug;
 
