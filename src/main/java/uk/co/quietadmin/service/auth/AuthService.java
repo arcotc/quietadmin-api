@@ -1,5 +1,6 @@
 package uk.co.quietadmin.service.auth;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,11 +23,14 @@ import java.nio.charset.StandardCharsets;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class AuthService {
     @Value("${security.session.idle-seconds:3600}")
@@ -70,14 +74,16 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse register(String email,
-                                 String rawPassword,
-                                 String firstName,
-                                 String lastName,
-                                 String userAgent,
-                                 String ipAddress,
-                                 String deviceId) {
-
+    public AuthResponse register(
+        String groupName,
+        String email,
+         String rawPassword,
+         String firstName,
+         String lastName,
+         String userAgent,
+         String ipAddress,
+         String deviceId
+    ) {
         String normalizedEmail = normalizeEmail(email);
 
         userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
@@ -98,18 +104,21 @@ public class AuthService {
         String verificationHash = TokenHash.sha256(verificationRaw);
 
         user.setEmailVerificationToken(verificationHash);
+        user.setEmailVerificationExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
         user = userRepository.save(user);
 
-        // Send verification email
-        emailService.sendVerificationEmail(user.getEmail(), verificationRaw);
+        String formattedExpiry =
+                DateTimeFormatter.ofPattern("EEEE d MMMM yyyy 'at' HH:mm")
+                        .withZone(ZoneId.of("Europe/London"))
+                        .format(user.getEmailVerificationExpiresAt());
 
-        user.setEmailVerificationExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+        emailService.sendVerificationEmail(user.getEmail(), verificationRaw, formattedExpiry, firstName, groupName);
 
         user = userRepository.save(user);
 
         // 2️⃣ Create group
         QaGroup group = new QaGroup();
-        group.setName(defaultGroupName(normalizedEmail));
+        group.setName(groupName.isEmpty() ? defaultGroupName(normalizedEmail) : groupName);
         group.setSlug(generateSlug(normalizedEmail));
         group.setCreatedBy(user.getId());
         group.setTrialEndsAt(Instant.now().plus(trialDays, ChronoUnit.DAYS));
@@ -148,7 +157,7 @@ public class AuthService {
         }
 
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new IllegalArgumentException("Email not verified");
+            return issueTokens(user, userAgent, ipAddress, deviceId);
         }
 
         if (user.getStatus() != UserStatus.ACTIVE) {
@@ -373,7 +382,7 @@ public class AuthService {
         UserAccount user = userRepository
                 .findByEmailVerificationTokenAndDeletedAtIsNull(hashed)
                 .orElseThrow(() ->
-                        new IllegalArgumentException("Invalid or expired verification token")
+                        new IllegalArgumentException("Invalid verification token")
                 );
 
         if (user.getEmailVerificationExpiresAt() == null ||
@@ -381,14 +390,17 @@ public class AuthService {
             throw new IllegalArgumentException("Verification token expired");
         }
 
+        // 🔥 If already verified, just issue tokens again
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
             return issueTokens(user, userAgent, ipAddress, deviceId);
         }
 
+        // First-time verification
         user.setEmailVerified(true);
         user.setStatus(UserStatus.ACTIVE);
-        user.setEmailVerificationToken(null);
-        user.setEmailVerificationExpiresAt(null);
+
+        // 🚫 DO NOT NULL THE TOKEN
+        // Leave it in place to keep the endpoint idempotent
 
         userRepository.save(user);
 

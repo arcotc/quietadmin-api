@@ -2,13 +2,15 @@ package uk.co.quietadmin.service.mail;
 
 import uk.co.quietadmin.domain.notice.Notice;
 
-public interface EmailService {
+import java.time.Instant;
 
-    void sendVerificationEmail(String toEmail, String verificationToken);
+public interface EmailService {
 
     void sendNoticeExpiryReminder(
             String toEmail,
             String firstName,
             Notice notice
     );
+
+    void sendVerificationEmail(String email, String verificationRaw, String formattedExpiry, String firstName, String groupName);
 }

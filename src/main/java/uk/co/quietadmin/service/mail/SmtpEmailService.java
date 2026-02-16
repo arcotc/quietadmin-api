@@ -9,6 +9,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import uk.co.quietadmin.domain.notice.Notice;
 
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
@@ -24,19 +25,21 @@ public class SmtpEmailService implements EmailService {
     @Value("${app.mail.base-url}")
     private String baseUrl;
 
+    @Value("${app.mail.ui-base-url}")
+    private String uuBaseUrl;
+
     /* ======================================================
        VERIFICATION EMAIL
        ====================================================== */
 
     @Override
-    public void sendVerificationEmail(String toEmail, String verificationToken) {
+    public void sendVerificationEmail(String toEmail, String verificationToken, String formattedExpiry, String firstName, String groupName) {
 
-        String verificationLink =
-                baseUrl + "/api/auth/verify?token=" + verificationToken;
+        String verificationLink = uuBaseUrl + "/verify?token=" + verificationToken;
 
         String subject = "Verify your QuietAdmin account";
 
-        String html = buildVerificationTemplate(verificationLink);
+        String html = buildVerificationTemplate(verificationLink, formattedExpiry, firstName, groupName);
 
         sendHtmlEmail(toEmail, subject, html);
     }
@@ -102,7 +105,7 @@ public class SmtpEmailService implements EmailService {
        TEMPLATES
        ====================================================== */
 
-    private String buildVerificationTemplate(String link) {
+    private String buildVerificationTemplate(String link, String formattedExpiry, String firstName, String groupName) {
 
         return """
         <!DOCTYPE html>
@@ -136,7 +139,11 @@ public class SmtpEmailService implements EmailService {
                             <tr>
                                 <td style="font-size:15px;line-height:1.6;color:#374151;">
                                     <p style="margin:0 0 18px 0;">
-                                        Thanks for registering.
+                                        Hi %s,
+                                    </p>
+
+                                    <p style="margin:0 0 18px 0;">
+                                        Thanks for registering the %s at QuietAdmin.
                                     </p>
 
                                     <p style="margin:0 0 24px 0;">
@@ -166,7 +173,7 @@ public class SmtpEmailService implements EmailService {
                             <tr>
                                 <td style="font-size:14px;color:#6B7280;line-height:1.6;">
                                     <p style="margin:0 0 12px 0;">
-                                        This link expires in 24 hours.
+                                        This link expires at %s.
                                     </p>
 
                                     <p style="margin:0;">
@@ -201,7 +208,7 @@ public class SmtpEmailService implements EmailService {
 
         </body>
         </html>
-        """.formatted(link, link);
+        """.formatted(firstName, groupName, link, formattedExpiry, link);
     }
 
     private String buildExpiryReminderTemplate(

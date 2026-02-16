@@ -82,6 +82,7 @@ public class AuthController {
         String ip = IpResolver.resolve(httpRequest);
 
         AuthResponse auth = authService.register(
+                request.groupName(),
                 request.email(),
                 request.password(),
                 request.firstName(),
