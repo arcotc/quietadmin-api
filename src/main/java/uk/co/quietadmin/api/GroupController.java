@@ -45,7 +45,8 @@ public class GroupController {
 
     @GetMapping("/members")
     public ResponseEntity<List<MemberDto>> members(Principal principal) {
-        currentUserService.requireAdmin(principal.getName());
+
+        // Any authenticated group member can view
         Membership membership = currentUserService.getMembership(principal.getName());
 
         return ResponseEntity.ok(
