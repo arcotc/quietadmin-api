@@ -7,5 +7,6 @@ public enum ErrorCode {
     FORBIDDEN,
     TOKEN_EXPIRED,
     TOKEN_INVALID,
-    INTERNAL_ERROR
+    INTERNAL_ERROR,
+    EMAIL_NOT_VERIFIED
 }

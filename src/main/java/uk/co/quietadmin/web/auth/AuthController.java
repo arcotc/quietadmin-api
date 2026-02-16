@@ -59,7 +59,8 @@ public class AuthController {
                 request.password(),
                 userAgent,
                 ip,
-                deviceId
+                deviceId,
+                httpRequest.getRequestURI()
         );
 
         addRefreshCookie(response, auth.refreshToken());
@@ -242,6 +243,22 @@ public class AuthController {
         addRefreshCookie(response, auth.refreshToken());
 
         return ResponseEntity.ok(auth.withoutRefreshToken());
+    }
+
+    // ===============================
+// RESEND VERIFICATION
+// ===============================
+
+    @PostMapping("/resend-verification")
+    public ResponseEntity<Void> resendVerification(
+            @RequestBody ResendVerificationRequest request,
+            HttpServletRequest httpRequest
+    ) {
+
+        authService.resendVerificationEmail(request.email());
+
+        // Always return 204 to avoid email enumeration attacks
+        return ResponseEntity.noContent().build();
     }
 
     // ===============================

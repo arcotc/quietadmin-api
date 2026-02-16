@@ -75,6 +75,31 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(error);
     }
 
+
+    // --------------------------------------------
+    // Domain ApiException
+    // --------------------------------------------
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<ApiError> handleApiException(
+            ApiException ex,
+            HttpServletRequest request
+    ) {
+
+        ApiError error = new ApiError(
+                Instant.now(),
+                ex.getStatus(),
+                ex.getError(),
+                ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+
+        logError(ex, error);
+
+        return ResponseEntity.status(ex.getStatus()).body(error);
+    }
+
+
     // --------------------------------------------
     // Fallback (unexpected errors)
     // --------------------------------------------
@@ -126,7 +151,7 @@ public class GlobalExceptionHandler {
         logError(ex);
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(new ApiError(Instant.now(), 403, ErrorCode.UNAUTHORIZED, ex.getMessage(), request.getRequestURI(), null));
+                .body(new ApiError(Instant.now(), 403, ErrorCode.FORBIDDEN, ex.getMessage(), request.getRequestURI(), null));
     }
 
     private static void logError(Exception ex) {
@@ -139,5 +164,4 @@ public class GlobalExceptionHandler {
             log.info("Error details: {}", error);
         }
     }
-
 }
