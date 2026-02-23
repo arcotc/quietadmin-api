@@ -9,6 +9,7 @@ import uk.co.quietadmin.domain.group.dto.MemberDto;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
 
@@ -74,7 +75,8 @@ public class GroupService {
 
                     return new MemberDto(
                             user.getId(),
-                            user.getFirstName() + " " + user.getLastName(),
+                            user.getFirstName(),
+                            user.getLastName(),
                             user.getEmail(),
                             m.getRole()
                     );
@@ -104,5 +106,33 @@ public class GroupService {
                 .orElseThrow(() -> new IllegalStateException("Membership not found"));
 
         membershipRepository.delete(membership);
+    }
+
+    public void updateMember(Long targetUserId,
+                             UpdateMemberRequest request,
+                             Principal principal) {
+
+        UserAccount currentUser = userRepository
+                .findByEmailAndDeletedAtIsNull(principal.getName())
+                .orElseThrow(() -> new IllegalStateException("User not found"));
+
+        UserAccount target = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Member not found"));
+
+        boolean isSelf = currentUser.getId().equals(target.getId());
+        boolean isAdmin = membershipRepository
+                .findByUserId(currentUser.getId())
+                .map(m -> m.getRole() == MembershipRole.ADMIN.name())
+                .orElse(false);
+
+        if (!isSelf && !isAdmin) {
+            throw new IllegalStateException("Not permitted");
+        }
+
+        target.setFirstName(request.firstName().trim());
+        target.setLastName(request.lastName().trim());
+        target.setEmail(request.email().trim().toLowerCase());
+
+        userRepository.save(target);
     }
 }

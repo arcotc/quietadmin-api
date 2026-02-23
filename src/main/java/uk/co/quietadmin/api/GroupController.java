@@ -1,11 +1,13 @@
 package uk.co.quietadmin.api;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uk.co.quietadmin.domain.customer.CurrentUserService;
 import uk.co.quietadmin.domain.group.GroupService;
 import uk.co.quietadmin.domain.group.Membership;
+import uk.co.quietadmin.domain.group.UpdateMemberRequest;
 import uk.co.quietadmin.domain.group.dto.GroupDto;
 import uk.co.quietadmin.domain.group.dto.MemberDto;
 
@@ -52,6 +54,16 @@ public class GroupController {
         return ResponseEntity.ok(
                 groupService.getMembers(membership.getGroupId())
         );
+    }
+
+    @PutMapping("/members/{userId}")
+    public ResponseEntity<Void> updateMember(
+            @PathVariable Long userId,
+            @Valid @RequestBody UpdateMemberRequest request,
+            Principal principal
+    ) {
+        groupService.updateMember(userId, request, principal);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/members/{userId}/promote")

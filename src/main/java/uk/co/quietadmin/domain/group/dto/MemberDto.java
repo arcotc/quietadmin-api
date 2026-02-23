@@ -2,7 +2,8 @@ package uk.co.quietadmin.domain.group.dto;
 
 public record MemberDto(
         Long userId,
-        String name,
+        String firstName,
+        String lastName,
         String email,
         String role
 ) {}
