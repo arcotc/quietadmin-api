@@ -68,6 +68,33 @@ public class AuthController {
     }
 
     // ===============================
+// SET PASSWORD
+// ===============================
+
+    @PostMapping("/set-password")
+    public ResponseEntity<AuthResponse> setPassword(
+            @RequestBody SetPasswordRequest request,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+            @RequestHeader(value = "User-Agent", required = false) String userAgent,
+            HttpServletRequest httpRequest,
+            HttpServletResponse response
+    ) {
+
+        String ip = IpResolver.resolve(httpRequest);
+
+        AuthResponse auth = authService.setPassword(
+                request.token(),
+                request.password(),
+                userAgent,
+                ip,
+                deviceId
+        );
+
+        addRefreshCookie(response, auth.refreshToken());
+        return ResponseEntity.ok(auth.withoutRefreshToken());
+    }
+
+    // ===============================
     // REGISTER
     // ===============================
 
@@ -85,7 +112,7 @@ public class AuthController {
         AuthResponse auth = authService.register(
                 request.groupName(),
                 request.email(),
-                request.password(),
+//                request.password(),
                 request.firstName(),
                 request.lastName(),
                 userAgent,
@@ -240,8 +267,34 @@ public class AuthController {
                 deviceId
         );
 
-        addRefreshCookie(response, auth.refreshToken());
+        if (auth.authenticated()) {
+            addRefreshCookie(response, auth.refreshToken());
+            return ResponseEntity.ok(auth.verifyRefreshToken());
+        }
 
+        return ResponseEntity.ok(auth);
+    }
+
+    @PostMapping("/activate")
+    public ResponseEntity<AuthResponse> activate(
+            @RequestBody ActivateRequest request,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+            @RequestHeader(value = "User-Agent", required = false) String userAgent,
+            HttpServletRequest httpRequest,
+            HttpServletResponse response
+    ) {
+
+        String ip = IpResolver.resolve(httpRequest);
+
+        AuthResponse auth = authService.activateAccount(
+                request.email(),
+                request.password(),
+                userAgent,
+                ip,
+                deviceId
+        );
+
+        addRefreshCookie(response, auth.refreshToken());
         return ResponseEntity.ok(auth.withoutRefreshToken());
     }
 

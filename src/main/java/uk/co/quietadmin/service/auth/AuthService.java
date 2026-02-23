@@ -2,6 +2,7 @@ package uk.co.quietadmin.service.auth;
 
 import com.stripe.model.checkout.Session;
 import com.stripe.param.checkout.SessionCreateParams;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,6 +34,7 @@ import java.util.Optional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class AuthService {
 
     @Value("${security.session.idle-seconds:3600}")
@@ -62,34 +64,11 @@ public class AuthService {
     private final LoginThrottleService loginThrottleService;
     private final EmailService emailService;
     private final SubscriptionGuardService subscriptionGuardService;
+    private final MemberService memberService;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
     private final long refreshDays = 30;
-
-    public AuthService(
-            UserAccountRepository userRepository,
-            QaGroupRepository groupRepository,
-            MembershipRepository membershipRepository,
-            RefreshTokenRepository refreshTokenRepository,
-            PendingSignupRepository pendingSignupRepository,
-            PasswordEncoder passwordEncoder,
-            JwtService jwtService,
-            LoginThrottleService loginThrottleService,
-            EmailService emailService,
-            SubscriptionGuardService subscriptionGuardService
-    ) {
-        this.userRepository = userRepository;
-        this.groupRepository = groupRepository;
-        this.membershipRepository = membershipRepository;
-        this.refreshTokenRepository = refreshTokenRepository;
-        this.pendingSignupRepository = pendingSignupRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-        this.loginThrottleService = loginThrottleService;
-        this.emailService = emailService;
-        this.subscriptionGuardService = subscriptionGuardService;
-    }
 
     /**
      * NEW BEHAVIOUR:
@@ -102,7 +81,7 @@ public class AuthService {
     public AuthResponse register(
             String groupName,
             String email,
-            String rawPassword,
+//            String rawPassword,
             String firstName,
             String lastName,
             String userAgent,
@@ -122,8 +101,9 @@ public class AuthService {
                 .status(PendingSignup.PendingSignupStatus.PENDING_CHECKOUT)
                 .email(normalizedEmail)
                 .firstName(firstName)
+                .lastName(lastName)
                 .groupName(groupName == null || groupName.isBlank() ? defaultGroupName(normalizedEmail) : groupName)
-                .passwordHash(passwordEncoder.encode(rawPassword))
+//                .passwordHash(passwordEncoder.encode(rawPassword))
                 .createdAt(Instant.now())
                 .expiresAt(Instant.now().plus(2, ChronoUnit.HOURS))
                 .build();
@@ -191,32 +171,36 @@ public class AuthService {
 
         loginThrottleService.assertLoginAllowed(normalizedEmail, ipAddress);
 
-        UserAccount user = userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail)
+        UserAccount user = userRepository
+                .findByEmailAndDeletedAtIsNull(normalizedEmail)
                 .orElseThrow(() -> {
                     loginThrottleService.recordFailure(normalizedEmail, ipAddress);
                     return new IllegalArgumentException("Invalid credentials");
                 });
+
+        // If no password yet → must activate first
+        if (user.getPasswordHash() == null) {
+            return AuthResponse.passwordSetupRequired(user.getEmail());
+        }
 
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
             loginThrottleService.recordFailure(normalizedEmail, ipAddress);
             throw new IllegalArgumentException("Invalid credentials");
         }
 
-        // ✅ If not verified, do NOT issue tokens (keep the product disciplined)
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new ApiException(
-                    403,
-                    ErrorCode.EMAIL_NOT_VERIFIED,
-                    "Please verify your email address."
-            );
+            return AuthResponse.verificationRequired(user.getEmail());
         }
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new IllegalArgumentException("Account not active");
         }
 
-        Optional<Membership> membership = membershipRepository.findByUserId(user.getId());
-        if (membership.isEmpty()) throw new IllegalStateException("User has no group membership");
+        Optional<Membership> membership =
+                membershipRepository.findByUserId(user.getId());
+
+        if (membership.isEmpty())
+            throw new IllegalStateException("User has no group membership");
 
         QaGroup group = groupRepository.findById(membership.get().getGroupId())
                 .orElseThrow(() -> new IllegalStateException("Group not found"));
@@ -347,14 +331,12 @@ public class AuthService {
             throw new IllegalArgumentException("Verification token expired");
         }
 
-        if (Boolean.TRUE.equals(user.getEmailVerified())) {
-            return issueTokens(user, userAgent, ipAddress, deviceId);
-        }
-
         user.setEmailVerified(true);
-        user.setStatus(UserStatus.ACTIVE);
 
+        user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
+
+        memberService.completeMembershipAfterActivation(user);
 
         return issueTokens(user, userAgent, ipAddress, deviceId);
     }
@@ -397,6 +379,79 @@ public class AuthService {
                 user.getFirstName(),
                 "QuietAdmin"
         );
+    }
+
+    @Transactional
+    public AuthResponse activateAccount(
+            String email,
+            String rawPassword,
+            String userAgent,
+            String ipAddress,
+            String deviceId
+    ) {
+
+        UserAccount user = userRepository
+                .findByEmailAndDeletedAtIsNull(normalizeEmail(email))
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new IllegalStateException("Email not verified");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setStatus(UserStatus.ACTIVE);
+
+        userRepository.save(user);
+
+        memberService.completeMembershipAfterActivation(user);
+
+        return issueTokens(user, userAgent, ipAddress, deviceId);
+    }
+
+    @Transactional
+    public AuthResponse setPassword(
+            String rawToken,
+            String rawPassword,
+            String userAgent,
+            String ip,
+            String deviceId
+    ) {
+
+        if (rawToken == null || rawToken.isBlank()) {
+            throw new IllegalArgumentException("Invalid token");
+        }
+
+        String hashed = TokenHash.sha256(rawToken);
+
+        UserAccount user = userRepository
+                .findByEmailVerificationTokenAndDeletedAtIsNull(hashed)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+
+        if (user.getEmailVerificationExpiresAt() == null ||
+                user.getEmailVerificationExpiresAt().isBefore(Instant.now())) {
+            throw new IllegalStateException("Token expired");
+        }
+
+        if (user.getPasswordHash() != null) {
+            throw new IllegalStateException("Password already set");
+        }
+
+        if (rawPassword == null || rawPassword.length() < 8) {
+            throw new IllegalArgumentException("Password too short");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setEmailVerified(true);
+        user.setStatus(UserStatus.ACTIVE);
+
+        user.setEmailVerificationToken(null);
+        user.setEmailVerificationExpiresAt(null);
+
+        userRepository.save(user);
+
+        memberService.completeMembershipAfterActivation(user);
+
+        return issueTokens(user, userAgent, ip, deviceId);
     }
 
     // =========================================================

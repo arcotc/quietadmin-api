@@ -10,6 +10,7 @@ import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -50,6 +51,10 @@ public class GroupService {
                 group.getName(),
                 group.getDescription()
         );
+    }
+
+    public Optional<QaGroup> getGroupById(Long groupId) {
+        return groupRepository.findById(groupId);
     }
 
     /* ======================================================

@@ -29,6 +29,9 @@ public class Membership {
     @Column(name = "joined_at")
     private Instant joinedAt;
 
+    @Column(name = "invited_by")
+    private Long invitedBy;
+
     @PrePersist
     void onCreate() {
         joinedAt = Instant.now();

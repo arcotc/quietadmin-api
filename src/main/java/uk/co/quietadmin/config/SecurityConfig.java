@@ -34,6 +34,8 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
+                "http://localhost:5174",
+                "http://127.0.0.1:5174",
                 "https://quietadmin.co.uk",
                 "https://www.quietadmin.co.uk"
         ));
@@ -76,7 +78,8 @@ public class SecurityConfig {
                                 "/api/auth/verify",
                                 "/api/auth/refresh",
                                 "/api/stripe/webhook",
-                                "/api/auth/resend-verification"
+                                "/api/auth/resend-verification",
+                                "/api/auth/set-password"
                         ).permitAll()
                         .requestMatchers("/api/auth/sessions/**").authenticated()
                         .requestMatchers("/api/auth/logout-all").authenticated()

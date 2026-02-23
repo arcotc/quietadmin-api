@@ -13,4 +13,12 @@ public interface EmailService {
     );
 
     void sendVerificationEmail(String email, String verificationRaw, String formattedExpiry, String firstName, String groupName);
+
+    void sendGroupInvitationEmail(
+            String toEmail,
+            String verificationToken,
+            String formattedExpiry,
+            String groupName,
+            String invitedByName
+    );
 }

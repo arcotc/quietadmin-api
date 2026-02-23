@@ -43,6 +43,9 @@ public class PendingSignup {
     @Column(name="first_name", nullable = false)
     private String firstName;
 
+    @Column(name="last_name", nullable = false)
+    private String lastName;
+
     @Column(name="group_name", nullable = false)
     private String groupName;
 

@@ -138,7 +138,7 @@ public class StripeWebhookService {
         UserAccount user = new UserAccount();
         user.setEmail(email);
         user.setFirstName(pending.getFirstName());
-        user.setLastName("");
+        user.setLastName(pending.getLastName());
         user.setPasswordHash(pending.getPasswordHash());
         user.setStatus(UserStatus.INVITED);
         user.setEmailVerified(false);
