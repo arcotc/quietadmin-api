@@ -61,7 +61,7 @@ public class MemberService {
             Membership membership = new Membership();
             membership.setGroupId(groupId);
             membership.setUserId(existingUser.getId());
-            membership.setRole(MembershipRole.MEMBER.name());
+            membership.setRole(MembershipRole.MEMBER);
             membership.setInvitedBy(invitedBy);
 
             membershipRepository.save(membership);
@@ -159,7 +159,7 @@ public class MemberService {
             Membership membership = new Membership();
             membership.setGroupId(invitation.getGroupId());
             membership.setUserId(user.getId());
-            membership.setRole(invitation.getRole().name());
+            membership.setRole(invitation.getRole());
             membership.setInvitedBy(invitation.getInvitedBy());
 
             membershipRepository.save(membership);

@@ -169,7 +169,7 @@ public class StripeWebhookService {
         Membership m = new Membership();
         m.setUserId(user.getId());
         m.setGroupId(group.getId());
-        m.setRole("ADMIN");
+        m.setRole(MembershipRole.ADMIN);
         membershipRepo.save(m);
 
         snapshotSubscription(subscriptionId, group);

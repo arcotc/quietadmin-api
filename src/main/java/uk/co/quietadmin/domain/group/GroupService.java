@@ -91,7 +91,7 @@ public class GroupService {
                 .findByGroupIdAndUserId(groupId, userId)
                 .orElseThrow(() -> new IllegalStateException("Membership not found"));
 
-        membership.setRole(MembershipRole.ADMIN.name());
+        membership.setRole(MembershipRole.ADMIN);
     }
 
     @Transactional
@@ -119,11 +119,19 @@ public class GroupService {
         UserAccount target = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Member not found"));
 
-        boolean isSelf = currentUser.getId().equals(target.getId());
-        boolean isAdmin = membershipRepository
-                .findByUserId(currentUser.getId())
-                .map(m -> m.getRole() == MembershipRole.ADMIN.name())
-                .orElse(false);
+        Membership targetMembership = membershipRepository
+                .findByUserId(targetUserId)
+                .orElseThrow(() -> new IllegalStateException("Target membership not found"));
+
+        Membership currentMembership = membershipRepository
+                .findByUserIdAndGroupId(
+                        currentUser.getId(),
+                        targetMembership.getGroupId()
+                )
+                .orElseThrow(() -> new IllegalStateException("Current membership not found"));
+
+        boolean isSelf = currentUser.getId().equals(targetUserId);
+        boolean isAdmin = MembershipRole.ADMIN.equals(currentMembership.getRole());
 
         if (!isSelf && !isAdmin) {
             throw new IllegalStateException("Not permitted");

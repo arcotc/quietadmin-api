@@ -23,8 +23,9 @@ public class Membership {
     @Column(name = "group_id", nullable = false)
     private Long groupId;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String role; // ADMIN / MEMBER
+    private MembershipRole role; // ADMIN / MEMBER
 
     @Column(name = "joined_at")
     private Instant joinedAt;
@@ -38,6 +39,6 @@ public class Membership {
     }
 
     public boolean isAdmin() {
-        return "ADMIN".equalsIgnoreCase(role);
+        return MembershipRole.ADMIN.equals(role);
     }
 }

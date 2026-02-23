@@ -3,10 +3,7 @@ package uk.co.quietadmin.api;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import uk.co.quietadmin.domain.group.Membership;
-import uk.co.quietadmin.domain.group.MembershipRepository;
-import uk.co.quietadmin.domain.group.QaGroup;
-import uk.co.quietadmin.domain.group.QaGroupRepository;
+import uk.co.quietadmin.domain.group.*;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 
@@ -63,7 +60,7 @@ public class UserController {
             String lastName,
             Long groupId,
             String groupName,
-            String membershipRole,
+            MembershipRole membershipRole,
             boolean platformAdmin
     ) {}
 }
