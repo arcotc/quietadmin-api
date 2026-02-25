@@ -1,6 +1,5 @@
 package uk.co.quietadmin.security;
 
-import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,6 +10,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 
@@ -19,7 +19,7 @@ import java.util.Collections;
 
 @Component
 @Slf4j
-public class JwtAuthenticationFilter extends org.springframework.web.filter.OncePerRequestFilter {
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserAccountRepository userRepository;
@@ -35,6 +35,7 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
+
         if (HttpMethod.OPTIONS.matches(request.getMethod())) {
             filterChain.doFilter(request, response);
             return;
@@ -42,10 +43,12 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
 
         String path = request.getServletPath();
 
+        // Public endpoints
         if (path.equals("/api/auth/login") ||
                 path.equals("/api/auth/register") ||
                 path.equals("/api/auth/verify") ||
-                path.equals("/api/auth/refresh")) {
+                path.equals("/api/auth/refresh") ||
+                path.equals("/api/auth/password-reset/confirm")) {
 
             filterChain.doFilter(request, response);
             return;
@@ -60,26 +63,12 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
 
         String token = header.substring(7);
 
-        log.debug("Token valid: " + jwtService.isValid(token));
-
         if (!jwtService.isValid(token)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        Claims claims = jwtService.parseClaims(token);
-
-        log.debug("Audience in token: " + claims.getAudience());
-        log.debug("Expected audience: " + jwtService.getAudience());
-
-        // Manual audience check
-        if (claims.getAudience() == null ||
-                !claims.getAudience().contains(jwtService.getAudience())) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        String email = claims.getSubject();
+        String email = jwtService.extractEmail(token);
 
         UserAccount user = userRepository
                 .findByEmailAndDeletedAtIsNull(email)
@@ -90,16 +79,18 @@ public class JwtAuthenticationFilter extends org.springframework.web.filter.Once
             return;
         }
 
-        UsernamePasswordAuthenticationToken auth =
+        UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
                         user.getEmail(),
                         null,
                         Collections.emptyList()
                 );
 
-        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        authentication.setDetails(
+                new WebAuthenticationDetailsSource().buildDetails(request)
+        );
 
-        SecurityContextHolder.getContext().setAuthentication(auth);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);
     }

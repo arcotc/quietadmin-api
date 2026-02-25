@@ -55,9 +55,8 @@ public class SecurityConfig {
                                            JwtAuthenticationFilter jwtFilter,
                                            RestAuthenticationEntryPoint entryPoint,
                                            RestAccessDeniedHandler deniedHandler)
-            throws Exception {
-
-        http
+        throws Exception {
+            http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
@@ -79,7 +78,9 @@ public class SecurityConfig {
                                 "/api/auth/refresh",
                                 "/api/stripe/webhook",
                                 "/api/auth/resend-verification",
-                                "/api/auth/set-password"
+                                "/api/auth/set-password",
+                                "/api/auth/password-reset/request",
+                                "/api/auth/password-reset/confirm"
                         ).permitAll()
                         .requestMatchers("/api/auth/sessions/**").authenticated()
                         .requestMatchers("/api/auth/logout-all").authenticated()

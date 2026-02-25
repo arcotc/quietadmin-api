@@ -21,4 +21,6 @@ public interface EmailService {
             String groupName,
             String invitedByName
     );
+
+    void sendPasswordResetEmail(String toEmail, String resetLink);
 }

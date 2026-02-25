@@ -35,14 +35,19 @@ public class JwtService {
 
     @PostConstruct
     public void init() {
-        // Secret must be >= 32 bytes for HS256. Base64 string is fine as long as long enough.
         if (secret == null || secret.length() < 32) {
-            throw new IllegalStateException("JWT secret must be at least 32 characters (prefer 64+).");
+            throw new IllegalStateException(
+                    "JWT secret must be at least 32 characters (prefer 64+)."
+            );
         }
-        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+
+        this.key = Keys.hmacShaKeyFor(
+                secret.getBytes(StandardCharsets.UTF_8)
+        );
     }
 
     public JwtToken createAccessToken(String email) {
+
         Instant now = Instant.now();
         Instant expiry = now.plusSeconds(expirationSeconds);
 
@@ -78,18 +83,16 @@ public class JwtService {
         }
     }
 
-    public Claims parseClaims(String token) {
+    private Claims parseClaims(String token) {
+
         return Jwts.parser()
                 .verifyWith(key)
                 .requireIssuer(issuer)
+                .requireAudience(audience)   // 🔐 Audience enforced here
                 .clockSkewSeconds(clockSkewSeconds)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-    }
-
-    public String getAudience() {
-        return audience;
     }
 
     public record JwtToken(String token, Instant expiresAt) {}
