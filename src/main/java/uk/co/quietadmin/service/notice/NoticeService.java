@@ -85,4 +85,25 @@ public class NoticeService {
     public List<Notice> getAllForGroup(Long groupId) {
         return noticeRepository.findByGroupIdOrdered(groupId);
     }
+
+    public Notice getActiveNoticeById(Long id, Long groupId) {
+
+        Notice notice = noticeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Notice not found"));
+
+        if (!notice.getGroupId().equals(groupId)) {
+            throw new RuntimeException("Forbidden");
+        }
+
+        if (!notice.getStatus().equals(NoticeStatus.ACTIVE)) {
+            throw new RuntimeException("Not active");
+        }
+
+        if (notice.getExpiresAt() != null &&
+                notice.getExpiresAt().isBefore(Instant.now())) {
+            throw new RuntimeException("Expired");
+        }
+
+        return notice;
+    }
 }

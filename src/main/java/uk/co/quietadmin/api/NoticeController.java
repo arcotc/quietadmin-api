@@ -1,6 +1,8 @@
 package uk.co.quietadmin.api;
 
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
+import org.jsoup.safety.Safelist;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uk.co.quietadmin.domain.customer.CurrentUserService;
@@ -42,10 +44,12 @@ public class NoticeController {
 
         Membership membership = currentUserService.getMembership(principal.getName());
 
+        String clean = Jsoup.clean(request.content(), Safelist.basic());
+
         Notice notice = new Notice();
         notice.setGroupId(membership.getGroupId());
         notice.setTitle(request.title());
-        notice.setContent(request.content());
+        notice.setContent(clean);
         notice.setExpiresAt(request.expiresAt());
         notice.setCreatedBy(membership.getUserId());
 
@@ -62,12 +66,14 @@ public class NoticeController {
 
         Membership membership = currentUserService.getMembership(principal.getName());
 
+        String clean = Jsoup.clean(request.content(), Safelist.basic());
+
         return ResponseEntity.ok(
                 noticeService.update(
                         id,
                         membership.getGroupId(),
                         request.title(),
-                        request.content(),
+                        clean,
                         request.expiresAt()
                 )
         );
@@ -104,6 +110,21 @@ public class NoticeController {
         return ResponseEntity.ok(
                 noticeService.getAllForGroup(membership.getGroupId())
         );
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Notice> getOne(
+            Principal principal,
+            @PathVariable Long id
+    ) {
+        Membership membership = currentUserService.getMembership(principal.getName());
+
+        Notice notice = noticeService.getActiveNoticeById(
+                id,
+                membership.getGroupId()
+        );
+
+        return ResponseEntity.ok(notice);
     }
 
     public record CreateNoticeRequest(
