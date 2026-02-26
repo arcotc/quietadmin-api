@@ -159,6 +159,24 @@ public class SharedLinksController {
         return service.getDashboard(groupId);
     }
 
+    @PostMapping("/{id}/pin")
+    public void pin(
+            Principal principal,
+            @PathVariable Long id
+    ) {
+        Long groupId = currentUserService.getCurrentGroupId(principal.getName());
+        service.setPinned(groupId, id, true);
+    }
+
+    @PostMapping("/{id}/unpin")
+    public void unpin(
+            Principal principal,
+            @PathVariable Long id
+    ) {
+        Long groupId = currentUserService.getCurrentGroupId(principal.getName());
+        service.setPinned(groupId, id, false);
+    }
+
     private SharedLinkFolderResponse toFolderResponse(SharedLinkFolder f) {
         return new SharedLinkFolderResponse(
                 f.getId(),

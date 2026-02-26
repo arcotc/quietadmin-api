@@ -201,4 +201,12 @@ public class SharedLinksService {
                 unsorted
         );
     }
+
+    @Transactional
+    public void setPinned(Long groupId, Long linkId, boolean pinned) {
+        SharedLink link = linkRepo.findByIdAndGroupId(linkId, groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Link not found"));
+
+        link.setPinned(pinned);
+    }
 }
