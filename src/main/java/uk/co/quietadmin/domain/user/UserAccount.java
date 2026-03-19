@@ -27,8 +27,8 @@ public class UserAccount {
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private UserStatus status = UserStatus.INVITED;
+    @Column(name = "status", nullable = false, length = 20)
+    private UserStatus userStatus = UserStatus.INVITED;
 
     @Column(name = "platform_admin", nullable = false)
     private boolean platformAdmin = false;

@@ -9,6 +9,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -152,6 +154,19 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ApiError(Instant.now(), 403, ErrorCode.FORBIDDEN, ex.getMessage(), request.getRequestURI(), null));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        ApiError error = new ApiError(
+                Instant.now(),
+                400,
+                ErrorCode.BAD_REQUEST,
+                "Invalid parameter value",
+                request.getRequestURI(),
+                null
+        );
+        return ResponseEntity.badRequest().body(error);
     }
 
     private static void logError(Exception ex) {

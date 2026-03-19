@@ -19,4 +19,8 @@ public interface MembershipRepository extends JpaRepository<Membership, Long> {
     long countByGroupIdAndRole(Long groupId, MembershipRole role);
 
     Optional<Membership> findByUserIdAndGroupId(Long id, Long groupId);
+
+    boolean existsByUserIdAndGroupId(Long userId, Long groupId);
+
+    List<Membership> findByUserIdInAndGroupId(List<Long> userIds, Long groupId);
 }

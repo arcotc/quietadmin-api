@@ -7,6 +7,10 @@ import uk.co.quietadmin.domain.notice.NoticeRepository;
 
 import org.springframework.security.access.AccessDeniedException;
 import uk.co.quietadmin.domain.notice.NoticeStatus;
+import uk.co.quietadmin.domain.team.NoticeTeamVisibility;
+import uk.co.quietadmin.domain.team.NoticeTeamVisibilityRepository;
+import uk.co.quietadmin.domain.team.Team;
+import uk.co.quietadmin.domain.team.TeamRepository;
 
 import java.time.Instant;
 import java.util.List;
@@ -14,11 +18,16 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class NoticeService {
-
     private final NoticeRepository noticeRepository;
+    private final NoticeTeamVisibilityRepository noticeTeamVisibilityRepository;
+    private final TeamRepository teamRepository;
 
-    public List<Notice> getActiveNotices(Long groupId) {
-        return noticeRepository.findActiveNotices(groupId, Instant.now());
+    public List<Notice> getActiveNotices(Long groupId, Long userId) {
+        return noticeRepository.findVisibleActiveNotices(
+                groupId,
+                userId,
+                Instant.now()
+        );
     }
 
     public Notice create(Notice notice) {
@@ -105,5 +114,31 @@ public class NoticeService {
         }
 
         return notice;
+    }
+
+    public void setVisibility(Long noticeId, Long groupId, List<Long> teamIds) {
+
+        Notice notice = noticeRepository.findByIdAndGroupId(noticeId, groupId)
+                .orElseThrow(() -> new RuntimeException("Not your group"));
+
+        noticeTeamVisibilityRepository.deleteByNoticeId(noticeId);
+
+        if (teamIds == null || teamIds.isEmpty()) return;
+
+        for (Long teamId : teamIds) {
+
+            Team team = teamRepository.findByIdAndDeletedAtIsNull(teamId)
+                    .orElseThrow();
+
+            if (!team.getGroupId().equals(groupId)) {
+                throw new RuntimeException("Forbidden team.");
+            }
+
+            NoticeTeamVisibility ntv = new NoticeTeamVisibility();
+            ntv.setNoticeId(noticeId);
+            ntv.setTeamId(teamId);
+
+            noticeTeamVisibilityRepository.save(ntv);
+        }
     }
 }

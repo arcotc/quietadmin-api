@@ -22,8 +22,6 @@ import uk.co.quietadmin.service.mail.EmailService;
 import uk.co.quietadmin.web.auth.AuthResponse;
 import uk.co.quietadmin.web.auth.LoginThrottleService;
 import uk.co.quietadmin.web.auth.SessionResponse;
-import uk.co.quietadmin.web.error.ApiException;
-import uk.co.quietadmin.web.error.ErrorCode;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -192,7 +190,7 @@ public class AuthService {
             return AuthResponse.verificationRequired(user.getEmail());
         }
 
-        if (user.getStatus() != UserStatus.ACTIVE) {
+        if (user.getUserStatus() != UserStatus.ACTIVE) {
             throw new IllegalArgumentException("Account not active");
         }
 
@@ -255,7 +253,7 @@ public class AuthService {
         UserAccount user = userRepository.findById(stored.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        if (user.getStatus() != UserStatus.ACTIVE) {
+        if (user.getUserStatus() != UserStatus.ACTIVE) {
             throw new IllegalArgumentException("Account not active");
         }
 
@@ -333,7 +331,7 @@ public class AuthService {
 
         user.setEmailVerified(true);
 
-        user.setStatus(UserStatus.ACTIVE);
+        user.setUserStatus(UserStatus.ACTIVE);
         userRepository.save(user);
 
         memberService.completeMembershipAfterActivation(user);
@@ -399,7 +397,7 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
-        user.setStatus(UserStatus.ACTIVE);
+        user.setUserStatus(UserStatus.ACTIVE);
 
         userRepository.save(user);
 
@@ -442,7 +440,7 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         user.setEmailVerified(true);
-        user.setStatus(UserStatus.ACTIVE);
+        user.setUserStatus(UserStatus.ACTIVE);
 
         user.setEmailVerificationToken(null);
         user.setEmailVerificationExpiresAt(null);

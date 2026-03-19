@@ -3,7 +3,6 @@ package uk.co.quietadmin.domain.group;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import uk.co.quietadmin.domain.group.*;
 import uk.co.quietadmin.domain.group.dto.GroupDto;
 import uk.co.quietadmin.domain.group.dto.MemberDto;
 import uk.co.quietadmin.domain.user.UserAccount;
@@ -78,7 +77,8 @@ public class GroupService {
                             user.getFirstName(),
                             user.getLastName(),
                             user.getEmail(),
-                            m.getRole()
+                            m.getRole(),
+                            user.getUserStatus()
                     );
                 })
                 .toList();

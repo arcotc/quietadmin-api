@@ -25,7 +25,12 @@ public class NoticeController {
     @GetMapping("/active")
     public ResponseEntity<List<Notice>> active(Principal principal) {
         Membership membership = currentUserService.getMembership(principal.getName());
-        return ResponseEntity.ok(noticeService.getActiveNotices(membership.getGroupId()));
+        return ResponseEntity.ok(
+                noticeService.getActiveNotices(
+                        membership.getGroupId(),
+                        membership.getUserId()
+                )
+        );
     }
 
     @GetMapping("/drafts")
@@ -126,6 +131,28 @@ public class NoticeController {
 
         return ResponseEntity.ok(notice);
     }
+
+    @PostMapping("/{id}/visibility")
+    public ResponseEntity<Void> setVisibility(
+            Principal principal,
+            @PathVariable Long id,
+            @RequestBody SetVisibilityRequest request
+    ) {
+        currentUserService.requireAdmin(principal.getName());
+        Membership membership = currentUserService.getMembership(principal.getName());
+
+        noticeService.setVisibility(
+                id,
+                membership.getGroupId(),
+                request.teamIds()
+        );
+
+        return ResponseEntity.ok().build();
+    }
+
+    public record SetVisibilityRequest(
+            List<Long> teamIds
+    ) {}
 
     public record CreateNoticeRequest(
             String title,

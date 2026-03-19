@@ -81,7 +81,7 @@ public class NoticeExpiryReminderJob {
         for (UserAccount user : users) {
 
             // Skip deleted or inactive users defensively
-            if (!"ACTIVE".equals(user.getStatus())) continue;
+            if (!"ACTIVE".equals(user.getUserStatus())) continue;
 
             emailService.sendNoticeExpiryReminder(
                     user.getEmail(),

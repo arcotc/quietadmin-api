@@ -115,4 +115,34 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
             @Param("from") Instant from,
             @Param("to") Instant to
     );
+
+    @Query("""
+        select n
+        from Notice n
+        where n.groupId = :groupId
+          and n.status = uk.co.quietadmin.domain.notice.NoticeStatus.ACTIVE
+          and (n.expiresAt is null or n.expiresAt > :now)
+          and (
+                not exists (
+                    select 1 from NoticeTeamVisibility ntv
+                    where ntv.noticeId = n.id
+                )
+                or exists (
+                    select 1
+                    from NoticeTeamVisibility ntv2
+                    join TeamMembership tm on tm.teamId = ntv2.teamId
+                    join Team t on t.id = tm.teamId
+                    where ntv2.noticeId = n.id
+                      and tm.userId = :userId
+                      and t.groupId = :groupId
+                      and t.deletedAt is null
+                )
+          )
+        order by n.createdAt desc
+    """)
+    List<Notice> findVisibleActiveNotices(
+            Long groupId,
+            Long userId,
+            Instant now
+    );
 }

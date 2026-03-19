@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uk.co.quietadmin.domain.group.dto.MemberDto;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 import uk.co.quietadmin.domain.user.UserStatus;
@@ -16,8 +17,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -80,7 +80,7 @@ public class MemberService {
         invitedUser.setFirstName(firstName);
         invitedUser.setLastName(lastName);
         invitedUser.setEmail(normalizedEmail);
-        invitedUser.setStatus(UserStatus.INVITED);
+        invitedUser.setUserStatus(UserStatus.INVITED);
         invitedUser.setEmailVerified(false);
 
         invitedUser.setPasswordHash(null);
@@ -176,5 +176,24 @@ public class MemberService {
         byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    public List<MemberDto> findMembers(Long groupId) {
+
+        return membershipRepository.findByGroupId(groupId).stream()
+                .map(m -> {
+                    UserAccount u = userRepository.findById(m.getUserId())
+                            .orElseThrow(() -> new IllegalStateException("User not found"));
+
+                    return new MemberDto(
+                            u.getId(),
+                            u.getFirstName(),
+                            u.getLastName(),
+                            u.getEmail(),
+                            m.getRole(),
+                            u.getUserStatus()
+                    );
+                })
+                .toList(); // ✅ FIXED
     }
 }

@@ -140,7 +140,7 @@ public class StripeWebhookService {
         user.setFirstName(pending.getFirstName());
         user.setLastName(pending.getLastName());
         user.setPasswordHash(pending.getPasswordHash());
-        user.setStatus(UserStatus.INVITED);
+        user.setUserStatus(UserStatus.INVITED);
         user.setEmailVerified(false);
 
         String verificationRaw = generateVerificationToken();
