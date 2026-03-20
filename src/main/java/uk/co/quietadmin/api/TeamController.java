@@ -30,6 +30,16 @@ public class TeamController {
         );
     }
 
+    @GetMapping("/{teamId}")
+    public ResponseEntity<TeamDto> getTeam(
+            Principal principal,
+            @PathVariable Long teamId
+    ) {
+        return ResponseEntity.ok(
+                teamService.getTeam(principal.getName(), teamId)
+        );
+    }
+
     /* ======================================================
        CREATE
        ====================================================== */
@@ -111,7 +121,7 @@ public class TeamController {
             @PathVariable Long teamId
     ) {
         return ResponseEntity.ok(
-                teamService.getMembers(principal.getName(), teamId)
+                teamService.getMembersForView(principal.getName(), teamId)
         );
     }
 

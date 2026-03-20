@@ -42,4 +42,14 @@ public class CurrentUserService {
             throw new AccessDeniedException("Admin access required.");
         }
     }
+
+    public String getDisplayName(Long userId) {
+        return userRepo.findById(userId)
+                .map(UserAccount::getDisplayName)
+                .orElseThrow();
+    }
+
+    public Long getCurrentUserId(String email) {
+        return userRepo.findByEmail(email).map(UserAccount::getId).orElseThrow();
+    }
 }

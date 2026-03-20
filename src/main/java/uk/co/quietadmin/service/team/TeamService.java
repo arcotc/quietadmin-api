@@ -177,22 +177,19 @@ public class TeamService {
     }
 
     @Transactional
-    public List<MemberDto> getMembers(String username, Long teamId) {
-
-        currentUserService.requireAdmin(username);
+    public List<MemberDto> getMembersForView(String username, Long teamId) {
 
         Membership membership = currentUserService.getMembership(username);
 
-        // ✅ SECURITY: ensure team belongs to group
+        // ✅ SECURITY: ensure team belongs to user's group
         Team team = teamRepository
                 .findByIdAndGroupIdAndDeletedAtIsNull(teamId, membership.getGroupId())
                 .orElseThrow(() -> new IllegalStateException("Team not found"));
 
-        // ✅ get memberships
+        // ✅ get team memberships
         List<TeamMembership> memberships =
                 teamMembershipRepository.findByTeamId(teamId);
 
-        // ✅ extract userIds
         List<Long> userIds = memberships.stream()
                 .map(TeamMembership::getUserId)
                 .toList();
@@ -205,12 +202,13 @@ public class TeamService {
         List<UserAccount> users =
                 userAccountRepository.findByIdIn(userIds);
 
-        // ✅ map to DTO
-        // fetch memberships for role + status
+        // ✅ fetch group memberships (for role/status)
         List<Membership> groupMemberships =
-                membershipRepository.findByUserIdInAndGroupId(userIds, membership.getGroupId());
+                membershipRepository.findByUserIdInAndGroupId(
+                        userIds,
+                        membership.getGroupId()
+                );
 
-        // map for quick lookup
         Map<Long, Membership> membershipMap =
                 groupMemberships.stream()
                         .collect(Collectors.toMap(Membership::getUserId, m -> m));
@@ -245,6 +243,26 @@ public class TeamService {
                 team.getName(),
                 team.getDescription(),
                 teamMembershipRepository.countByTeamId(team.getId())
+        );
+    }
+
+    @Transactional
+    public TeamDto getTeam(String username, Long teamId) {
+
+        Membership membership = currentUserService.getMembership(username);
+
+        Team team = teamRepository
+                .findByIdAndGroupIdAndDeletedAtIsNull(teamId, membership.getGroupId())
+                .orElseThrow(() -> new IllegalStateException("Team not found"));
+
+        // Optional: count members
+        long memberCount = teamMembershipRepository.countByTeamId(teamId);
+
+        return new TeamDto(
+                team.getId(),
+                team.getName(),
+                team.getDescription(),
+                memberCount
         );
     }
 }

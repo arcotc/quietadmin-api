@@ -62,4 +62,8 @@ public class UserAccount {
     void onUpdate() {
         this.updatedAt = Instant.now();
     }
+
+    public String getDisplayName() {
+        return firstName + " " + lastName;
+    }
 }
