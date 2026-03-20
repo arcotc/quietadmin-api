@@ -44,6 +44,15 @@ public class RotaController {
         }
     }
 
+    @DeleteMapping("/{rotaId}")
+    public ResponseEntity<Void> delete(
+            Principal principal,
+            @PathVariable Long rotaId
+    ) {
+        rotaService.delete(principal.getName(), rotaId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping
     public ResponseEntity<RotaResponse> create(
             Principal principal,

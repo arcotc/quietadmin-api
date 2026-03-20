@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.co.quietadmin.api.rota.dto.*;
 import uk.co.quietadmin.domain.customer.CurrentUserService;
+import uk.co.quietadmin.domain.group.Membership;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -264,5 +265,20 @@ public class RotaService {
         }
 
         return toResponse(email, rotaRepository.save(rota));
+    }
+
+    @Transactional
+    public void delete(String username, Long rotaId) {
+
+        Membership membership = currentUserService.getMembership(username);
+
+        // Optional but recommended: enforce admin
+        currentUserService.requireAdmin(username);
+
+        Rota rota = rotaRepository
+                .findByIdAndGroupId(rotaId, membership.getGroupId())
+                .orElseThrow(() -> new EntityNotFoundException("Rota not found"));
+
+        rotaRepository.delete(rota);
     }
 }
