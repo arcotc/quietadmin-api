@@ -2,6 +2,7 @@ package uk.co.quietadmin.api.rota;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uk.co.quietadmin.api.rota.dto.CreateRotaRequest;
@@ -39,8 +40,8 @@ public class RotaController {
             return ResponseEntity.ok(
                     rota
             );
-        } catch (EntityNotFoundException entityNotFoundException) {
-            return ResponseEntity.notFound().build();
+        } catch (EntityNotFoundException e) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
     }
 
