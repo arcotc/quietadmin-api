@@ -10,6 +10,8 @@ import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.group.UpdateMemberRequest;
 import uk.co.quietadmin.domain.group.dto.GroupDto;
 import uk.co.quietadmin.domain.group.dto.MemberDto;
+import uk.co.quietadmin.domain.signup.PendingSignup;
+import uk.co.quietadmin.service.group.InvitationService;
 
 import java.security.Principal;
 import java.util.List;
@@ -21,6 +23,7 @@ public class GroupController {
 
     private final CurrentUserService currentUserService;
     private final GroupService groupService;
+    private final InvitationService invitationService;
 
     @GetMapping
     public ResponseEntity<GroupDto> getGroup(Principal principal) {
@@ -90,6 +93,16 @@ public class GroupController {
         );
 
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/pending-invites")
+    public ResponseEntity<List<PendingSignup>> pendingInvites(Principal principal) {
+
+        currentUserService.requireAdmin(principal.getName());
+
+        return ResponseEntity.ok(
+                invitationService.getPendingInvites(principal.getName())
+        );
     }
 
     public record UpdateGroupRequest(String name, String description) {}

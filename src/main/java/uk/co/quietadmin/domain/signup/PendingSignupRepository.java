@@ -9,4 +9,9 @@ import java.util.Optional;
 public interface PendingSignupRepository extends JpaRepository<PendingSignup, Long> {
     Optional<PendingSignup> findByToken(String token);
     void deleteByExpiresAtBefore(Instant cutoff);
+
+    List<PendingSignup> findByGroupNameAndStatusIn(
+            String groupName,
+            List<PendingSignup.PendingSignupStatus> statuses
+    );
 }

@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import uk.co.quietadmin.domain.group.MemberService;
 import uk.co.quietadmin.domain.group.dto.MemberDto;
 import uk.co.quietadmin.domain.team.dto.TeamDto;
+import uk.co.quietadmin.domain.team.Team;
 import uk.co.quietadmin.service.team.TeamService;
 
 import java.security.Principal;

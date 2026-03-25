@@ -37,7 +37,6 @@ public class TeamService {
 
     @Transactional
     public List<TeamDto> listTeams(String username) {
-
         Membership membership = currentUserService.getMembership(username);
 
         List<Team> teams = teamRepository
@@ -84,7 +83,6 @@ public class TeamService {
 
     @Transactional
     public TeamDto createTeam(String username, String name, String description) {
-
         currentUserService.requireAdmin(username);
 
         Membership membership = currentUserService.getMembership(username);
