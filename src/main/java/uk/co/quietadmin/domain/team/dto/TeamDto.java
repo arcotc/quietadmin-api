@@ -4,5 +4,6 @@ public record TeamDto(
         Long id,
         String name,
         String description,
-        long membersCount
+        long membersCount,
+        boolean isMember
 ) {}

@@ -18,6 +18,7 @@ import uk.co.quietadmin.domain.user.UserAccountRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,12 +40,41 @@ public class TeamService {
 
         Membership membership = currentUserService.getMembership(username);
 
-        return teamRepository
+        List<Team> teams = teamRepository
                 .findByGroupIdAndDeletedAtIsNullOrderByNameAsc(
                         membership.getGroupId()
-                )
+                );
+
+        // ✅ Get all teams the current user belongs to (ONE query)
+        Set<Long> myTeamIds = teamMembershipRepository
+                .findByUserId(membership.getUserId())
                 .stream()
-                .map(this::toDto)
+                .map(TeamMembership::getTeamId)
+                .collect(Collectors.toSet());
+
+        return teams.stream()
+                .map(team -> {
+                    long count = teamMembershipRepository.countByTeamId(team.getId());
+
+                    boolean isMember = myTeamIds.contains(team.getId());
+
+                    return new TeamDto(
+                            team.getId(),
+                            team.getName(),
+                            team.getDescription(),
+                            count,
+                            isMember
+                    );
+                })
+
+                // ✅ THIS IS WHERE YOUR SORT GOES
+                .sorted((a, b) ->
+                        Boolean.compare(
+                                b.isMember(),   // true first
+                                a.isMember()
+                        )
+                )
+
                 .toList();
     }
 
@@ -54,6 +84,7 @@ public class TeamService {
 
     @Transactional
     public TeamDto createTeam(String username, String name, String description) {
+
         currentUserService.requireAdmin(username);
 
         Membership membership = currentUserService.getMembership(username);
@@ -78,9 +109,16 @@ public class TeamService {
 
         Team saved = teamRepository.save(team);
 
-        return toDto(saved);
+        return new TeamDto(
+                saved.getId(),
+                saved.getName(),
+                saved.getDescription(),
+                0L,          // no members yet
+                false        // creator not auto-added
+        );
     }
 
+    @Transactional
     public TeamDto updateTeam(String username, Long teamId, String name, String description) {
 
         currentUserService.requireAdmin(username);
@@ -91,18 +129,26 @@ public class TeamService {
                 .findByIdAndGroupIdAndDeletedAtIsNull(teamId, membership.getGroupId())
                 .orElseThrow(() -> new IllegalStateException("Team not found"));
 
-        team.setName(name);
-        team.setDescription(description);
+        team.setName(name != null ? name.trim() : null);
+        team.setDescription(description != null ? description.trim() : null);
 
         teamRepository.save(team);
 
-        long membersCount = teamMembershipRepository.countByTeamId(team.getId());
+        long membersCount =
+                teamMembershipRepository.countByTeamId(team.getId());
+
+        boolean isMember =
+                teamMembershipRepository.existsByTeamIdAndUserId(
+                        team.getId(),
+                        membership.getUserId()
+                );
 
         return new TeamDto(
-            team.getId(),
-            team.getName(),
-            team.getDescription(),
-            membersCount
+                team.getId(),
+                team.getName(),
+                team.getDescription(),
+                membersCount,
+                isMember
         );
     }
 
@@ -237,12 +283,18 @@ public class TeamService {
        MAPPER
        ====================================================== */
 
-    private TeamDto toDto(Team team) {
+    private TeamDto toDto(Team team, Set<Long> myTeamIds) {
+        long membersCount =
+                teamMembershipRepository.countByTeamId(team.getId());
+
+        boolean isMember = myTeamIds.contains(team.getId());
+
         return new TeamDto(
                 team.getId(),
                 team.getName(),
                 team.getDescription(),
-                teamMembershipRepository.countByTeamId(team.getId())
+                membersCount,
+                isMember
         );
     }
 
@@ -255,14 +307,17 @@ public class TeamService {
                 .findByIdAndGroupIdAndDeletedAtIsNull(teamId, membership.getGroupId())
                 .orElseThrow(() -> new IllegalStateException("Team not found"));
 
-        // Optional: count members
         long memberCount = teamMembershipRepository.countByTeamId(teamId);
+
+        boolean isMember = teamMembershipRepository
+                .existsByTeamIdAndUserId(teamId, membership.getUserId());
 
         return new TeamDto(
                 team.getId(),
                 team.getName(),
                 team.getDescription(),
-                memberCount
+                memberCount,
+                isMember
         );
     }
 }

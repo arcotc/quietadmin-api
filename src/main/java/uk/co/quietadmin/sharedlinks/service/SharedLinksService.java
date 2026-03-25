@@ -209,4 +209,23 @@ public class SharedLinksService {
 
         link.setPinned(pinned);
     }
+
+    public SharedLink updateLink(
+            Long groupId,
+            Long id,
+            String title,
+            String url,
+            String description,
+            Long folderId
+    ) {
+        SharedLink link = linkRepo.findByIdAndGroupId(id, groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Link not found"));
+
+        link.setTitle(title);
+        link.setUrl(url);
+        link.setDescription(description);
+//        link.setFolderId(folderId);
+
+        return linkRepo.save(link);
+    }
 }

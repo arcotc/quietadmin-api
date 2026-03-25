@@ -177,6 +177,29 @@ public class SharedLinksController {
         service.setPinned(groupId, id, false);
     }
 
+    @PutMapping("/{id}")
+    public SharedLinkResponse update(
+            Principal principal,
+            @PathVariable Long id,
+            @RequestBody @Valid UpdateSharedLinkRequest req
+    ) {
+        Membership membership = currentUserService.getMembership(principal.getName());
+        requireEditorOrAbove(membership);
+
+        Long groupId = membership.getGroupId();
+
+        SharedLink updated = service.updateLink(
+                groupId,
+                id,
+                req.title(),
+                req.url(),
+                req.description(),
+                req.folderId()
+        );
+
+        return toResponse(updated);
+    }
+
     private SharedLinkFolderResponse toFolderResponse(SharedLinkFolder f) {
         return new SharedLinkFolderResponse(
                 f.getId(),
@@ -193,4 +216,11 @@ public class SharedLinksController {
             throw new IllegalStateException("Not permitted");
         }
     }
+
+    public record UpdateSharedLinkRequest(
+            String title,
+            String url,
+            String description,
+            Long folderId
+    ) {}
 }

@@ -2,6 +2,7 @@ package uk.co.quietadmin.web.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
+@Slf4j
 public class AuthController {
 
     @Value("${security.cookie.secure:true}")
@@ -51,6 +53,7 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse response
     ) {
+        log.debug("Received login request: {}", request);
 
         String ip = IpResolver.resolve(httpRequest);
 

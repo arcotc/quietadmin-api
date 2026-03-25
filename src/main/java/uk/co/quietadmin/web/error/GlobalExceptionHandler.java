@@ -2,6 +2,7 @@ package uk.co.quietadmin.web.error;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -12,7 +13,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
@@ -45,6 +49,20 @@ public class GlobalExceptionHandler {
         logError(ex, error);
 
         return ResponseEntity.badRequest().body(error);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<?> handleDuplicate(DataIntegrityViolationException ex) {
+
+        if (ex.getMessage().contains("uq_team_name_per_group")) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("message", "A team with this name already exists"));
+        }
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Unexpected error"));
     }
 
     private FieldErrorDetail mapFieldError(FieldError fieldError) {

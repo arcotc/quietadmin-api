@@ -1,6 +1,7 @@
 package uk.co.quietadmin.api;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Safelist;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/notices")
 @RequiredArgsConstructor
+@Slf4j
 public class NoticeController {
 
     private final NoticeService noticeService;
@@ -24,6 +26,8 @@ public class NoticeController {
 
     @GetMapping("/active")
     public ResponseEntity<List<Notice>> active(Principal principal) {
+        log.debug("Get active notices");
+
         Membership membership = currentUserService.getMembership(principal.getName());
         return ResponseEntity.ok(
                 noticeService.getActiveNotices(

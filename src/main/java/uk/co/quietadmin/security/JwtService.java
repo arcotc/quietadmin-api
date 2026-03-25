@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +15,7 @@ import java.util.Date;
 import java.util.UUID;
 
 @Service
+@Slf4j
 public class JwtService {
 
     @Value("${security.jwt.secret}")
@@ -79,12 +81,13 @@ public class JwtService {
             parseClaims(token);
             return true;
         } catch (Exception e) {
+            log.debug("JWT is invalid: {}", token);
+
             return false;
         }
     }
 
     private Claims parseClaims(String token) {
-
         return Jwts.parser()
                 .verifyWith(key)
                 .requireIssuer(issuer)
