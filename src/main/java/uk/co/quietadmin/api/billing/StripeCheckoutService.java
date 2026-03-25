@@ -23,7 +23,7 @@ public class StripeCheckoutService {
     private final UserAccountRepository userRepo;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.frontendBaseUrl}")
+    @Value("${app.ui.base-url}")
     private String frontendBaseUrl;
 
     @Value("${stripe.priceId}")

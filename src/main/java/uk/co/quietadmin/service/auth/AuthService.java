@@ -39,7 +39,7 @@ public class AuthService {
     private long sessionIdleSeconds;
 
     // Stripe checkout config
-    @Value("${stripe.price.standard}")
+    @Value("${stripe.priceId}")
     private String stripePriceId;
 
     @Value("${app.ui.base-url}")
