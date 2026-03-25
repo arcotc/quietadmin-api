@@ -2,14 +2,18 @@ package uk.co.quietadmin.api.ratelimit;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
+import uk.co.quietadmin.security.SecurityEventService;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
+@AllArgsConstructor
 public class RateLimitService {
+    private final SecurityEventService securityEventService;
 
     private final Cache<String, RateWindow> cache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofHours(2)) // cleanup safety
@@ -17,6 +21,7 @@ public class RateLimitService {
             .build();
 
     public void assertAllowed(
+            String ip,
             String key,
             int maxAttempts,
             Duration window,
@@ -42,6 +47,7 @@ public class RateLimitService {
             int attempts = existing.count.incrementAndGet();
 
             if (attempts > maxAttempts) {
+                securityEventService.rateLimitHit(key, ip);
                 throw new RateLimitExceededException(message);
             }
         }

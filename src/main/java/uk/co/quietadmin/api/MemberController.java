@@ -1,5 +1,6 @@
 package uk.co.quietadmin.api;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,8 @@ import java.security.Principal;
 import java.time.Duration;
 import java.util.List;
 
+import static uk.co.quietadmin.security.SecurityEventService.getIp;
+
 @RestController
 @RequestMapping("/api/members")
 @RequiredArgsConstructor
@@ -23,13 +26,15 @@ public class MemberController {
 
     @PostMapping("/invite")
     public ResponseEntity<Void> invite(
+            HttpServletRequest request,
             Principal principal,
-            @RequestBody InviteRequest request
+            @RequestBody InviteRequest inviteRequest
     ) {
         currentUserService.requireAdmin(principal.getName());
         Membership membership = currentUserService.getMembership(principal.getName());
 
         rateLimitService.assertAllowed(
+                getIp(request),
                 "invite:" + membership.getGroupId() + ":" + membership.getUserId(),
                 10,
                 Duration.ofHours(1),
@@ -39,9 +44,9 @@ public class MemberController {
         memberService.inviteMember(
                 membership.getGroupId(),
                 membership.getUserId(),
-                request.firstName(),
-                request.lastName(),
-                request.email()
+                inviteRequest.firstName(),
+                inviteRequest.lastName(),
+                inviteRequest.email()
         );
 
         return ResponseEntity.ok().build();

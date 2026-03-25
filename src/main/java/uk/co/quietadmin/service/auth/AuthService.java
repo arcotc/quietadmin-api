@@ -17,6 +17,7 @@ import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
 import uk.co.quietadmin.domain.user.UserStatus;
 import uk.co.quietadmin.security.JwtService;
+import uk.co.quietadmin.security.SecurityEventService;
 import uk.co.quietadmin.security.TokenHash;
 import uk.co.quietadmin.service.mail.EmailService;
 import uk.co.quietadmin.web.auth.AuthResponse;
@@ -59,6 +60,7 @@ public class AuthService {
     private final MembershipRepository membershipRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PendingSignupRepository pendingSignupRepository;
+    private final SecurityEventService securityEventService;
 
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -179,30 +181,43 @@ public class AuthService {
 
         // If no password yet → must activate first
         if (user.getPasswordHash() == null) {
+            securityEventService.authFailure(normalizedEmail, ipAddress, "must_activate_first");
             return AuthResponse.passwordSetupRequired(user.getEmail());
         }
 
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
             loginThrottleService.recordFailure(normalizedEmail, ipAddress);
+            securityEventService.authFailure(normalizedEmail, ipAddress, "invalid_credentials");
             throw new IllegalArgumentException("Invalid credentials");
         }
 
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            securityEventService.authFailure(normalizedEmail, ipAddress, "email_not_verified");
             return AuthResponse.verificationRequired(user.getEmail());
         }
 
         if (user.getUserStatus() != UserStatus.ACTIVE) {
+            securityEventService.authFailure(normalizedEmail, ipAddress, "account_not_active");
             throw new IllegalArgumentException("Account not active");
         }
 
         Optional<Membership> membership =
                 membershipRepository.findByUserId(user.getId());
 
-        if (membership.isEmpty())
+        if (membership.isEmpty()) {
+            securityEventService.authFailure(normalizedEmail, ipAddress, "user_has_no_group_membership");
             throw new IllegalStateException("User has no group membership");
+        }
 
         QaGroup group = groupRepository.findById(membership.get().getGroupId())
-                .orElseThrow(() -> new IllegalStateException("Group not found"));
+                .orElseThrow(() -> {
+                    securityEventService.authFailure(
+                            normalizedEmail,
+                            ipAddress,
+                            "group_not_found_for_membership"
+                    );
+                    return new IllegalStateException("Group not found");
+                });
 
         subscriptionGuardService.assertSubscriptionActive(group);
 
@@ -224,16 +239,21 @@ public class AuthService {
 
         RefreshToken stored = refreshTokenRepository
                 .findByTokenHashAndRevokedAtIsNull(hash)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
+                .orElseThrow(() -> {
+                    logSessionAnomaly(null, ipAddress, "invalid_token");
+                    return new IllegalArgumentException("Invalid refresh token");
+                });
 
         if (stored.getRevokedAt() != null) {
             revokeAllUserSessions(stored.getUserId(), now);
+            logSessionAnomaly(stored.getUserId(), ipAddress, "possible_replay_detected");
             throw new IllegalArgumentException("Session revoked (possible replay detected)");
         }
 
         if (stored.getExpiresAt().isBefore(now)) {
             stored.setRevokedAt(now);
             refreshTokenRepository.save(stored);
+            logSessionAnomaly(stored.getUserId(), ipAddress, "refresh_token_expired");
             throw new IllegalArgumentException("Refresh token expired");
         }
 
@@ -241,6 +261,7 @@ public class AuthService {
 
         if (!incomingFingerprint.equals(stored.getFingerprintHash())) {
             revokeAllUserSessions(stored.getUserId(), now);
+            logSessionAnomaly(stored.getUserId(), ipAddress, "fingerprint_mismatch");
             throw new IllegalArgumentException("Session anomaly detected");
         }
 
@@ -248,21 +269,32 @@ public class AuthService {
         if (lastUsed != null && lastUsed.isBefore(now.minusSeconds(sessionIdleSeconds))) {
             stored.setRevokedAt(now);
             refreshTokenRepository.save(stored);
+            logSessionAnomaly(stored.getUserId(), ipAddress, "session_expired");
             throw new IllegalArgumentException("Session expired due to inactivity");
         }
 
         UserAccount user = userRepository.findById(stored.getUserId())
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> {
+                    log.warn("DATA_INCONSISTENCY userId={} reason=user_not_found", stored.getUserId());
+                    return new IllegalArgumentException("User not found");
+                });
 
         if (user.getUserStatus() != UserStatus.ACTIVE) {
+            log.warn("DATA_INCONSISTENCY userId={} reason=account_not_active", stored.getUserId());
             throw new IllegalArgumentException("Account not active");
         }
 
         Membership membership = membershipRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new IllegalStateException("Membership missing"));
+                .orElseThrow(() -> {
+                    log.warn("DATA_INCONSISTENCY userId={} reason=membership_missing", stored.getUserId());
+                    return new IllegalStateException("Membership missing");
+                });
 
         QaGroup group = groupRepository.findById(membership.getGroupId())
-                .orElseThrow(() -> new IllegalStateException("Group not found"));
+                .orElseThrow(() -> {
+                    log.warn("DATA_INCONSISTENCY userId={} reason=group_missing", stored.getUserId());
+                    return new IllegalStateException("Group not found");
+                });
 
         subscriptionGuardService.assertSubscriptionActive(group);
 
@@ -525,5 +557,9 @@ public class AuthService {
         String safeIp = ipAddress != null ? ipAddress : "unknown-ip";
 
         return TokenHash.sha256(safeDevice + "|" + safeAgent + "|" + safeIp);
+    }
+
+    private void logSessionAnomaly(Long userId, String ip, String reason) {
+        securityEventService.sessionAnomaly(userId, ip, reason);
     }
 }

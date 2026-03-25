@@ -20,6 +20,8 @@ import java.security.Principal;
 import java.time.Duration;
 import java.util.List;
 
+import static uk.co.quietadmin.security.SecurityEventService.getIp;
+
 @RestController
 @RequestMapping("/api/auth")
 @Slf4j
@@ -59,21 +61,25 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse response
     ) {
-        log.debug("Received login request: {}", request);
+        log.debug("Received login request: {}", request.email());
 
         String ip = IpResolver.resolve(httpRequest);
 
-        AuthResponse auth = authService.login(
-                request.email(),
-                request.password(),
-                userAgent,
-                ip,
-                deviceId,
-                httpRequest.getRequestURI()
-        );
+        try {
+            AuthResponse auth = authService.login(
+                    request.email(),
+                    request.password(),
+                    userAgent,
+                    ip,
+                    deviceId,
+                    httpRequest.getRequestURI()
+            );
 
-        addRefreshCookie(response, auth.refreshToken());
-        return ResponseEntity.ok(auth.withoutRefreshToken());
+            addRefreshCookie(response, auth.refreshToken());
+            return ResponseEntity.ok(auth.withoutRefreshToken());
+        } catch (IllegalArgumentException illegalArgumentException) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     // ===============================
@@ -119,7 +125,7 @@ public class AuthController {
 
         // ✅ Email-based limit (prevents repeated spam to same address)
         String email = registerRequest.email().trim().toLowerCase();
-        rateLimitCheck("register:email:", email, 3, "This email has been used recently. Please check your inbox or try again later.");
+        rateLimitCheck(getIp(request), "register:email:", email, 3, "This email has been used recently. Please check your inbox or try again later.");
 
         String ip = IpResolver.resolve(request);
         AuthResponse auth = authService.register(
@@ -135,8 +141,9 @@ public class AuthController {
         return ResponseEntity.ok(auth);
     }
 
-    private void rateLimitCheck(String key, String data, int maxAttempts, String message) {
+    private void rateLimitCheck(String ip, String key, String data, int maxAttempts, String message) {
         rateLimitService.assertAllowed(
+                ip,
                 key + data,
                 maxAttempts,
                 Duration.ofHours(1),
@@ -148,12 +155,7 @@ public class AuthController {
     private void ipRateLimitCheck(String key, HttpServletRequest request, int maxAttempts, String message) {
         String ip = getIp(request);
 
-        rateLimitCheck(key, ip, maxAttempts, message);
-    }
-
-
-    private String getIp(HttpServletRequest request) {
-        return IpResolver.resolve(request);
+        rateLimitCheck(ip, key, ip, maxAttempts, message);
     }
 
     // ===============================
@@ -337,7 +339,7 @@ public class AuthController {
 
         // ✅ Email-based limit (prevents repeated spam to same address)
         String email = resendVerificationRequest.email().trim().toLowerCase();
-        rateLimitCheck("resend-verification:email:", email, 3, "A verification email was sent recently. Please check your inbox.");
+        rateLimitCheck(getIp(request), "resend-verification:email:", email, 3, "A verification email was sent recently. Please check your inbox.");
 
         authService.resendVerificationEmail(email);
 
