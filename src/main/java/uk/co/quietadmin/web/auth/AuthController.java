@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import uk.co.quietadmin.api.ratelimit.RateLimitService;
 import uk.co.quietadmin.domain.auth.RefreshToken;
 import uk.co.quietadmin.domain.auth.RefreshTokenRepository;
 import uk.co.quietadmin.domain.user.UserAccount;
@@ -29,6 +30,7 @@ public class AuthController {
     @Value("${security.jwt.refresh-expiration-seconds}")
     private long refreshExpirationSeconds;
 
+    private final RateLimitService rateLimitService;
     private final AuthService authService;
     private final UserAccountRepository userAccountRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -36,11 +38,13 @@ public class AuthController {
     public AuthController(
             AuthService authService,
             UserAccountRepository userAccountRepository,
-            RefreshTokenRepository refreshTokenRepository
+            RefreshTokenRepository refreshTokenRepository,
+            RateLimitService rateLimitService
     ) {
         this.authService = authService;
         this.userAccountRepository = userAccountRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.rateLimitService = rateLimitService;
     }
 
     // ===============================
@@ -105,27 +109,51 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(
-            @RequestBody RegisterRequest request,
+            @RequestBody RegisterRequest registerRequest,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             @RequestHeader(value = "User-Agent", required = false) String userAgent,
-            HttpServletRequest httpRequest,
+            HttpServletRequest request,
             HttpServletResponse response
     ) {
+        ipRateLimitCheck("register:ip:", request, 5, "Too many sign-up attempts. Please try again later.");
 
-        String ip = IpResolver.resolve(httpRequest);
+        // ✅ Email-based limit (prevents repeated spam to same address)
+        String email = registerRequest.email().trim().toLowerCase();
+        rateLimitCheck("register:email:", email, 3, "This email has been used recently. Please check your inbox or try again later.");
 
+        String ip = IpResolver.resolve(request);
         AuthResponse auth = authService.register(
-                request.groupName(),
-                request.email(),
-//                request.password(),
-                request.firstName(),
-                request.lastName(),
+                registerRequest.groupName(),
+                email,
+                registerRequest.firstName(),
+                registerRequest.lastName(),
                 userAgent,
                 ip,
                 deviceId
         );
 
         return ResponseEntity.ok(auth);
+    }
+
+    private void rateLimitCheck(String key, String data, int maxAttempts, String message) {
+        rateLimitService.assertAllowed(
+                key + data,
+                maxAttempts,
+                Duration.ofHours(1),
+                message
+        );
+    }
+
+
+    private void ipRateLimitCheck(String key, HttpServletRequest request, int maxAttempts, String message) {
+        String ip = getIp(request);
+
+        rateLimitCheck(key, ip, maxAttempts, message);
+    }
+
+
+    private String getIp(HttpServletRequest request) {
+        return IpResolver.resolve(request);
     }
 
     // ===============================
@@ -140,18 +168,17 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-
         if (refreshToken == null) {
             throw new IllegalArgumentException("Refresh token missing");
         }
 
-        String ip = IpResolver.resolve(request);
+        ipRateLimitCheck("refresh:ip:", request, 60, "Too many refresh attempts.");
 
         AuthResponse auth = authService.refresh(
-                refreshToken,
-                userAgent,
-                ip,
-                deviceId
+            refreshToken,
+            userAgent,
+            getIp(request),
+            deviceId
         );
 
         addRefreshCookie(response, auth.refreshToken());
@@ -262,13 +289,10 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-
-        String ip = IpResolver.resolve(request);
-
         AuthResponse auth = authService.verifyEmail(
                 token,
                 userAgent,
-                ip,
+                getIp(request),
                 deviceId
         );
 
@@ -282,20 +306,17 @@ public class AuthController {
 
     @PostMapping("/activate")
     public ResponseEntity<AuthResponse> activate(
-            @RequestBody ActivateRequest request,
+            @RequestBody ActivateRequest activateRequest,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             @RequestHeader(value = "User-Agent", required = false) String userAgent,
-            HttpServletRequest httpRequest,
+            HttpServletRequest request,
             HttpServletResponse response
     ) {
-
-        String ip = IpResolver.resolve(httpRequest);
-
         AuthResponse auth = authService.activateAccount(
-                request.email(),
-                request.password(),
+                activateRequest.email(),
+                activateRequest.password(),
                 userAgent,
-                ip,
+                getIp(request),
                 deviceId
         );
 
@@ -309,11 +330,16 @@ public class AuthController {
 
     @PostMapping("/resend-verification")
     public ResponseEntity<Void> resendVerification(
-            @RequestBody ResendVerificationRequest request,
-            HttpServletRequest httpRequest
+            @RequestBody ResendVerificationRequest resendVerificationRequest,
+            HttpServletRequest request
     ) {
+        ipRateLimitCheck("resend-verification:ip:", request, 5, "Too many requests. Please try again later.");
 
-        authService.resendVerificationEmail(request.email());
+        // ✅ Email-based limit (prevents repeated spam to same address)
+        String email = resendVerificationRequest.email().trim().toLowerCase();
+        rateLimitCheck("resend-verification:email:", email, 3, "A verification email was sent recently. Please check your inbox.");
+
+        authService.resendVerificationEmail(email);
 
         // Always return 204 to avoid email enumeration attacks
         return ResponseEntity.noContent().build();

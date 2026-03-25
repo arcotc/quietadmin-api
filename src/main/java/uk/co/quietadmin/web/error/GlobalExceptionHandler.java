@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import uk.co.quietadmin.api.ratelimit.RateLimitExceededException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -63,6 +64,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("message", "Unexpected error"));
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiError> handleRateLimit(
+            RateLimitExceededException ex,
+            HttpServletRequest request
+    ) {
+        ApiError error = new ApiError(
+                Instant.now(),
+                429,
+                ErrorCode.TOO_MANY_REQUESTS,
+                ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(429).body(error);
     }
 
     private FieldErrorDetail mapFieldError(FieldError fieldError) {
