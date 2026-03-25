@@ -23,9 +23,11 @@ import java.util.List;
 @RequestMapping("/api/auth")
 @Slf4j
 public class AuthController {
-
     @Value("${security.cookie.secure:true}")
     private boolean secureCookies;
+
+    @Value("${security.jwt.refresh-expiration-seconds}")
+    private long refreshExpirationSeconds;
 
     private final AuthService authService;
     private final UserAccountRepository userAccountRepository;
@@ -327,8 +329,8 @@ public class AuthController {
                 .httpOnly(true)
                 .secure(secureCookies)
                 .path("/")
-                .maxAge(Duration.ofDays(30))
-                .sameSite("Strict")
+                .maxAge(refreshExpirationSeconds)
+                .sameSite("Lax")
                 .build();
 
         response.addHeader("Set-Cookie", cookie.toString());
@@ -341,7 +343,7 @@ public class AuthController {
                 .secure(secureCookies)
                 .path("/")
                 .maxAge(0)
-                .sameSite("Strict")
+                .sameSite("Lax")
                 .build();
 
         response.addHeader("Set-Cookie", cookie.toString());

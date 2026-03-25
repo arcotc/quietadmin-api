@@ -51,6 +51,9 @@ public class AuthService {
     @Value("${stripe.trial-days:14}")
     private long trialDays;
 
+    @Value("${security.jwt.refresh-expiration-seconds}")
+    private long refreshExpirationSeconds;
+
     private final UserAccountRepository userRepository;
     private final QaGroupRepository groupRepository;
     private final MembershipRepository membershipRepository;
@@ -65,8 +68,6 @@ public class AuthService {
     private final MemberService memberService;
 
     private final SecureRandom secureRandom = new SecureRandom();
-
-    private final long refreshDays = 30;
 
     /**
      * NEW BEHAVIOUR:
@@ -477,7 +478,7 @@ public class AuthService {
         RefreshToken rt = new RefreshToken();
         rt.setUserId(userId);
         rt.setTokenHash(TokenHash.sha256(rawToken));
-        rt.setExpiresAt(Instant.now().plus(refreshDays, ChronoUnit.DAYS));
+        rt.setExpiresAt(Instant.now().plusSeconds(refreshExpirationSeconds));
         rt.setLastUsedAt(Instant.now());
         rt.setUserAgent(userAgent);
         rt.setIpAddress(ipAddress);

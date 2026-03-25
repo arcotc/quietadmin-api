@@ -21,7 +21,7 @@ public class JwtService {
     @Value("${security.jwt.secret}")
     private String secret;
 
-    @Value("${security.jwt.expiration-seconds}")
+    @Value("${security.jwt.access-expiration-seconds:600}")
     private long expirationSeconds;
 
     @Value("${security.jwt.issuer}")
@@ -30,7 +30,7 @@ public class JwtService {
     @Value("${security.jwt.audience}")
     private String audience;
 
-    @Value("${security.jwt.clock-skew-seconds:60}")
+    @Value("${security.jwt.clock-skew-seconds}")
     private long clockSkewSeconds;
 
     private SecretKey key;
