@@ -9,10 +9,12 @@ import uk.co.quietadmin.domain.customer.CurrentUserService;
 import uk.co.quietadmin.domain.group.MemberService;
 import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.group.dto.MemberDto;
+import uk.co.quietadmin.security.SecurityEventService;
 
 import java.security.Principal;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import static uk.co.quietadmin.security.SecurityEventService.getIp;
 
@@ -23,6 +25,7 @@ public class MemberController {
     private final RateLimitService rateLimitService;
     private final CurrentUserService currentUserService;
     private final MemberService memberService;
+    private final SecurityEventService securityEventService;
 
     @PostMapping("/invite")
     public ResponseEntity<Void> invite(
@@ -47,6 +50,13 @@ public class MemberController {
                 inviteRequest.firstName(),
                 inviteRequest.lastName(),
                 inviteRequest.email()
+        );
+
+        securityEventService.audit(
+                "MEMBER_INVITED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("email", inviteRequest.email().trim().toLowerCase())
         );
 
         return ResponseEntity.ok().build();

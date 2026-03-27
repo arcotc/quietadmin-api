@@ -30,6 +30,7 @@ import java.time.temporal.ChronoUnit;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static uk.co.quietadmin.security.SecurityEventService.getIp;
@@ -180,6 +181,7 @@ public class AuthService {
                 .orElseThrow(() -> {
                     log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
                     loginThrottleService.recordFailure(normalizedEmail, ipAddress);
+                    securityEventService.authFailure(normalizedEmail, ipAddress, "invalid_credentials");
                     return new IllegalArgumentException("Invalid credentials");
                 });
 
@@ -213,8 +215,7 @@ public class AuthService {
             throw new IllegalArgumentException("Account not active");
         }
 
-        Optional<Membership> membership =
-                membershipRepository.findByUserId(user.getId());
+        Optional<Membership> membership = membershipRepository.findByUserId(user.getId());
 
         if (membership.isEmpty()) {
             log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
@@ -233,9 +234,10 @@ public class AuthService {
                     return new IllegalStateException("Group not found");
                 });
 
-        subscriptionGuardService.assertSubscriptionActive(group);
+        subscriptionGuardService.assertSubscriptionActive(group, normalizedEmail, ipAddress);
 
         loginThrottleService.recordSuccess(normalizedEmail, ipAddress);
+        securityEventService.authSuccess(user.getId(), user.getEmail(), ipAddress);
 
         return issueTokens(user, userAgent, ipAddress, deviceId);
     }
@@ -255,12 +257,14 @@ public class AuthService {
                 .findByTokenHashAndRevokedAtIsNull(hash)
                 .orElseThrow(() -> {
                     logSessionAnomaly(null, ipAddress, "invalid_token");
+//                    securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "invalid_token");
                     return new IllegalArgumentException("Invalid refresh token");
                 });
 
         if (stored.getRevokedAt() != null) {
             revokeAllUserSessions(stored.getUserId(), now);
             logSessionAnomaly(stored.getUserId(), ipAddress, "possible_replay_detected");
+            securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "possible_replay_detected");
             throw new IllegalArgumentException("Session revoked (possible replay detected)");
         }
 
@@ -268,6 +272,7 @@ public class AuthService {
             stored.setRevokedAt(now);
             refreshTokenRepository.save(stored);
             logSessionAnomaly(stored.getUserId(), ipAddress, "refresh_token_expired");
+            securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "refresh_token_expired");
             throw new IllegalArgumentException("Refresh token expired");
         }
 
@@ -276,6 +281,7 @@ public class AuthService {
         if (!incomingFingerprint.equals(stored.getFingerprintHash())) {
             revokeAllUserSessions(stored.getUserId(), now);
             logSessionAnomaly(stored.getUserId(), ipAddress, "fingerprint_mismatch");
+            securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "fingerprint_mismatch");
             throw new IllegalArgumentException("Session anomaly detected");
         }
 
@@ -284,33 +290,38 @@ public class AuthService {
             stored.setRevokedAt(now);
             refreshTokenRepository.save(stored);
             logSessionAnomaly(stored.getUserId(), ipAddress, "session_expired");
+            securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "session_expired");
             throw new IllegalArgumentException("Session expired due to inactivity");
         }
 
         UserAccount user = userRepository.findById(stored.getUserId())
                 .orElseThrow(() -> {
                     log.warn("DATA_INCONSISTENCY userId={} reason=user_not_found", stored.getUserId());
+                    securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "user_not_found");
                     return new IllegalArgumentException("User not found");
                 });
 
         if (user.getUserStatus() != UserStatus.ACTIVE) {
             log.warn("DATA_INCONSISTENCY userId={} reason=account_not_active", stored.getUserId());
+            securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "account_not_active");
             throw new IllegalArgumentException("Account not active");
         }
 
         Membership membership = membershipRepository.findByUserId(user.getId())
                 .orElseThrow(() -> {
                     log.warn("DATA_INCONSISTENCY userId={} reason=membership_missing", stored.getUserId());
+                    securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "membership_missing");
                     return new IllegalStateException("Membership missing");
                 });
 
         QaGroup group = groupRepository.findById(membership.getGroupId())
                 .orElseThrow(() -> {
                     log.warn("DATA_INCONSISTENCY userId={} reason=group_missing", stored.getUserId());
+                    securityEventService.sessionAnomaly(stored.getUserId(), ipAddress, "group_not_found");
                     return new IllegalStateException("Group not found");
                 });
 
-        subscriptionGuardService.assertSubscriptionActive(group);
+        subscriptionGuardService.assertSubscriptionActive(group, user.getEmail(), ipAddress);
 
         stored.setRevokedAt(now);
         stored.setLastUsedAt(now);
@@ -318,6 +329,11 @@ public class AuthService {
         AuthResponse newTokens = issueTokens(user, userAgent, ipAddress, deviceId);
         stored.setReplacedByTokenHash(TokenHash.sha256(newTokens.refreshToken()));
         refreshTokenRepository.save(stored);
+
+        securityEventService.event("AUTH_REFRESH_SUCCESS", Map.of(
+                "userId", user.getId(),
+                "ip", ipAddress
+        ));
 
         return newTokens;
     }

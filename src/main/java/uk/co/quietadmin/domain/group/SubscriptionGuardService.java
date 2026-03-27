@@ -1,13 +1,17 @@
 package uk.co.quietadmin.domain.group;
 
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
+import uk.co.quietadmin.security.SecurityEventService;
 
 import java.time.Instant;
 
 @Service
+@AllArgsConstructor
 public class SubscriptionGuardService {
+    private final SecurityEventService securityEventService;
 
-    public void assertSubscriptionActive(QaGroup group) {
+    public void assertSubscriptionActive(QaGroup group, String normalizedEmail, String ipAddress) {
 
         // ---------------------------------------------------------
         // NEW: Stripe-authoritative path (preferred)
@@ -35,6 +39,7 @@ public class SubscriptionGuardService {
 
             // Canceled / ended
             if (s == StripeSubscriptionStatus.CANCELED || s == StripeSubscriptionStatus.UNPAID) {
+                securityEventService.authFailure(normalizedEmail, ipAddress, "invalid_credentials");
                 throw new IllegalArgumentException("Subscription cancelled");
             }
 

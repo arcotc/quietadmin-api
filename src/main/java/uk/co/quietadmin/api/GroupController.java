@@ -11,16 +11,18 @@ import uk.co.quietadmin.domain.group.UpdateMemberRequest;
 import uk.co.quietadmin.domain.group.dto.GroupDto;
 import uk.co.quietadmin.domain.group.dto.MemberDto;
 import uk.co.quietadmin.domain.signup.PendingSignup;
+import uk.co.quietadmin.security.SecurityEventService;
 import uk.co.quietadmin.service.group.InvitationService;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/group")
 @RequiredArgsConstructor
 public class GroupController {
-
+    private final SecurityEventService securityEventService;
     private final CurrentUserService currentUserService;
     private final GroupService groupService;
     private final InvitationService invitationService;
@@ -34,16 +36,26 @@ public class GroupController {
     @PutMapping
     public ResponseEntity<GroupDto> updateGroup(
             Principal principal,
-            @RequestBody UpdateGroupRequest request
+            @RequestBody UpdateGroupRequest updateGroupRequest
     ) {
         currentUserService.requireAdmin(principal.getName());
         Membership membership = currentUserService.getMembership(principal.getName());
 
+        securityEventService.audit(
+                "TEAM_UPDATED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of(
+                        "teamId", membership.getGroupId(),
+                        "teamName", updateGroupRequest.name()
+                )
+        );
+
         return ResponseEntity.ok(
                 groupService.updateGroup(
                         membership.getGroupId(),
-                        request.name(),
-                        request.description()
+                        updateGroupRequest.name(),
+                        updateGroupRequest.description()
                 )
         );
     }

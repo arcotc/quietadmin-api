@@ -14,6 +14,7 @@ import uk.co.quietadmin.domain.team.TeamRepository;
 import uk.co.quietadmin.domain.team.dto.TeamDto;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
+import uk.co.quietadmin.security.SecurityEventService;
 
 import java.time.Instant;
 import java.util.List;
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class TeamService {
-
+    private final SecurityEventService securityEventService;
     private final TeamRepository teamRepository;
     private final CurrentUserService currentUserService;
     private final MembershipRepository membershipRepository;
@@ -107,6 +108,16 @@ public class TeamService {
 
         Team saved = teamRepository.save(team);
 
+        securityEventService.audit(
+                "TEAM_CREATED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of(
+                        "teamId", saved.getId(),
+                        "teamName", saved.getName()
+                )
+        );
+
         return new TeamDto(
                 saved.getId(),
                 saved.getName(),
@@ -173,6 +184,14 @@ public class TeamService {
                 );
 
         team.setDeletedAt(Instant.now());
+
+        securityEventService.audit(
+                "TEAM_DELETED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("teamId", team.getId())
+        );
+
         teamRepository.save(team);
     }
 
@@ -200,6 +219,13 @@ public class TeamService {
         tm.setTeamId(teamId);
         tm.setUserId(userId);
 
+        securityEventService.audit(
+                "TEAM_ADD_MEMBER",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("teamId", team.getId())
+        );
+
         teamMembershipRepository.save(tm);
     }
 
@@ -216,6 +242,13 @@ public class TeamService {
         teamRepository
                 .findByIdAndGroupIdAndDeletedAtIsNull(teamId, membership.getGroupId())
                 .orElseThrow(() -> new IllegalStateException("Team not found"));
+
+        securityEventService.audit(
+                "TEAM_REMOVE_MEMBER",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("teamId", teamId)
+        );
 
         teamMembershipRepository.deleteByTeamIdAndUserId(teamId, userId);
     }

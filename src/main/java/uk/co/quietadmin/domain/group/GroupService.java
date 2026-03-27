@@ -7,15 +7,17 @@ import uk.co.quietadmin.domain.group.dto.GroupDto;
 import uk.co.quietadmin.domain.group.dto.MemberDto;
 import uk.co.quietadmin.domain.user.UserAccount;
 import uk.co.quietadmin.domain.user.UserAccountRepository;
+import uk.co.quietadmin.security.SecurityEventService;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class GroupService {
-
+    private final SecurityEventService securityEventService;
     private final GroupRepository groupRepository;
     private final MembershipRepository membershipRepository;
     private final UserAccountRepository userRepository;
@@ -91,6 +93,16 @@ public class GroupService {
                 .findByGroupIdAndUserId(groupId, userId)
                 .orElseThrow(() -> new IllegalStateException("Membership not found"));
 
+        securityEventService.audit(
+                "TEAM_PROMOTE_MEMBER",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of(
+                        "teamId", membership.getGroupId(),
+                        "userId", userId
+                )
+        );
+
         membership.setRole(MembershipRole.ADMIN);
     }
 
@@ -104,6 +116,16 @@ public class GroupService {
         Membership membership = membershipRepository
                 .findByGroupIdAndUserId(groupId, userId)
                 .orElseThrow(() -> new IllegalStateException("Membership not found"));
+
+        securityEventService.audit(
+                "TEAM_REMOVE_MEMBER",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of(
+                        "teamId", membership.getGroupId(),
+                        "userId", userId
+                )
+        );
 
         membershipRepository.delete(membership);
     }
@@ -140,6 +162,16 @@ public class GroupService {
         target.setFirstName(request.firstName().trim());
         target.setLastName(request.lastName().trim());
         target.setEmail(request.email().trim().toLowerCase());
+
+        securityEventService.audit(
+                "TEAM_UPDATE_MEMBER",
+                currentMembership.getUserId(),
+                currentMembership.getGroupId(),
+                Map.of(
+                        "teamId", currentMembership.getGroupId(),
+                        "userId", targetUserId
+                )
+        );
 
         userRepository.save(target);
     }

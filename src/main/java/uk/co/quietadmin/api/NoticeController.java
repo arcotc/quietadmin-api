@@ -60,7 +60,7 @@ public class NoticeController {
         notice.setExpiresAt(request.expiresAt());
         notice.setCreatedBy(membership.getUserId());
 
-        return ResponseEntity.ok(noticeService.create(notice));
+        return ResponseEntity.ok(noticeService.create(membership, notice));
     }
 
     @PutMapping("/{id}")
@@ -90,14 +90,14 @@ public class NoticeController {
     public ResponseEntity<Notice> publish(Principal principal, @PathVariable Long id) {
         currentUserService.requireAdmin(principal.getName());
         Membership membership = currentUserService.getMembership(principal.getName());
-        return ResponseEntity.ok(noticeService.publish(id, membership.getGroupId()));
+        return ResponseEntity.ok(noticeService.publish(id, membership));
     }
 
     @PostMapping("/{id}/unpublish")
     public ResponseEntity<Notice> unpublish(Principal principal, @PathVariable Long id) {
         currentUserService.requireAdmin(principal.getName());
         Membership membership = currentUserService.getMembership(principal.getName());
-        return ResponseEntity.ok(noticeService.unpublish(id, membership.getGroupId()));
+        return ResponseEntity.ok(noticeService.unpublish(membership, id));
     }
 
     @DeleteMapping("/{id}")
@@ -105,7 +105,7 @@ public class NoticeController {
         currentUserService.requireAdmin(principal.getName());
 
         Membership membership = currentUserService.getMembership(principal.getName());
-        noticeService.delete(id, membership.getGroupId());
+        noticeService.delete(membership, id);
 
         return ResponseEntity.noContent().build();
     }

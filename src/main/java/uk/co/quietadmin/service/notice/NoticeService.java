@@ -2,6 +2,7 @@ package uk.co.quietadmin.service.notice;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.notice.Notice;
 import uk.co.quietadmin.domain.notice.NoticeRepository;
 
@@ -11,9 +12,11 @@ import uk.co.quietadmin.domain.team.NoticeTeamVisibility;
 import uk.co.quietadmin.domain.team.NoticeTeamVisibilityRepository;
 import uk.co.quietadmin.domain.team.Team;
 import uk.co.quietadmin.domain.team.TeamRepository;
+import uk.co.quietadmin.security.SecurityEventService;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +24,7 @@ public class NoticeService {
     private final NoticeRepository noticeRepository;
     private final NoticeTeamVisibilityRepository noticeTeamVisibilityRepository;
     private final TeamRepository teamRepository;
+    private final SecurityEventService securityEventService;
 
     public List<Notice> getActiveNotices(Long groupId, Long userId) {
         return noticeRepository.findVisibleActiveNotices(
@@ -30,11 +34,21 @@ public class NoticeService {
         );
     }
 
-    public Notice create(Notice notice) {
+    public Notice create(Membership membership, Notice notice) {
         if (notice.getStatus() == null) {
             notice.setStatus(NoticeStatus.DRAFT);
         }
-        return noticeRepository.save(notice);
+
+        Notice saved = noticeRepository.save(notice);
+
+        securityEventService.audit(
+                "NOTICE_CREATED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("noticeId", saved.getId())
+        );
+
+        return saved;
     }
 
     public Notice update(Long id, Long groupId, String title, String content, Instant expiresAt) throws AccessDeniedException {
@@ -52,31 +66,45 @@ public class NoticeService {
         return noticeRepository.save(n);
     }
 
-    public void delete(Long id, Long groupId) throws AccessDeniedException {
-        Notice n = noticeRepository.findByIdAndGroupId(id, groupId)
+    public void delete(Membership membership, Long id) throws AccessDeniedException {
+        Notice n = noticeRepository.findByIdAndGroupId(id, membership.getGroupId())
                 .orElseThrow(() -> new AccessDeniedException("Not your group"));
 
-        if (!n.getGroupId().equals(groupId)) {
+        if (!n.getGroupId().equals(membership.getGroupId())) {
             throw new AccessDeniedException("Not your group.");
         }
+
+        securityEventService.audit(
+                "NOTICE_DELETED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("noticeId", n.getId())
+        );
 
         noticeRepository.delete(n);
     }
 
-    public Notice publish(Long id, Long groupId) {
-        Notice n = noticeRepository.findByIdAndGroupId(id, groupId)
+    public Notice publish(Long id, Membership membership) {
+        Notice n = noticeRepository.findByIdAndGroupId(id, membership.getGroupId())
                 .orElseThrow(() -> new AccessDeniedException("Not your group"));
 
         if (n.getStatus() == NoticeStatus.EXPIRED) {
             throw new IllegalStateException("Cannot publish an expired notice.");
         }
 
+        securityEventService.audit(
+                "NOTICE_PUBLISHED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("noticeId", n.getId())
+        );
+
         n.setStatus(NoticeStatus.ACTIVE);
         return noticeRepository.save(n);
     }
 
-    public Notice unpublish(Long id, Long groupId) {
-        Notice n = noticeRepository.findByIdAndGroupId(id, groupId)
+    public Notice unpublish(Membership membership, Long id) {
+        Notice n = noticeRepository.findByIdAndGroupId(id, membership.getGroupId())
                 .orElseThrow(() -> new AccessDeniedException("Not your group"));
 
         if (n.getStatus() == NoticeStatus.EXPIRED) {
@@ -84,6 +112,14 @@ public class NoticeService {
         }
 
         n.setStatus(NoticeStatus.DRAFT);
+
+        securityEventService.audit(
+                "NOTICE_UNPUBLISHED",
+                membership.getUserId(),
+                membership.getGroupId(),
+                Map.of("noticeId", n.getId())
+        );
+
         return noticeRepository.save(n);
     }
 
@@ -118,7 +154,7 @@ public class NoticeService {
 
     public void setVisibility(Long noticeId, Long groupId, List<Long> teamIds) {
 
-        Notice notice = noticeRepository.findByIdAndGroupId(noticeId, groupId)
+        noticeRepository.findByIdAndGroupId(noticeId, groupId)
                 .orElseThrow(() -> new RuntimeException("Not your group"));
 
         noticeTeamVisibilityRepository.deleteByNoticeId(noticeId);

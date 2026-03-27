@@ -1,24 +1,23 @@
 package uk.co.quietadmin.web.auth;
 
 import jakarta.transaction.Transactional;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import uk.co.quietadmin.domain.auth.LoginThrottle;
 import uk.co.quietadmin.domain.auth.LoginThrottleRepository;
+import uk.co.quietadmin.security.SecurityEventService;
 
 import java.time.Instant;
 
 @Service
+@AllArgsConstructor
 public class LoginThrottleService {
-
     private final LoginThrottleRepository repo;
+    private final SecurityEventService securityEventService;
 
     // policy
     private final int maxFailures = 5;
     private final long windowSeconds = 600; // 10 minutes
-
-    public LoginThrottleService(LoginThrottleRepository repo) {
-        this.repo = repo;
-    }
 
     @Transactional
     public void assertLoginAllowed(String email, String ip) {
@@ -26,6 +25,7 @@ public class LoginThrottleService {
             Instant now = Instant.now();
 
             if (t.getLockedUntil() != null && t.getLockedUntil().isAfter(now)) {
+                securityEventService.authLocked(email, ip, "lock_active");
                 throw new IllegalArgumentException("Too many attempts. Try again later.");
             }
         });
@@ -67,6 +67,8 @@ public class LoginThrottleService {
             // reset failure window after lock
             t.setFailedCount(0);
             t.setFirstFailedAt(null);
+
+            securityEventService.authLocked(email, ip, "lock_level_" + level);
         }
 
         repo.save(t);
