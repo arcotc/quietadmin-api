@@ -2,6 +2,7 @@ package uk.co.quietadmin.service.auth;
 
 import com.stripe.model.checkout.Session;
 import com.stripe.param.checkout.SessionCreateParams;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +31,8 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+
+import static uk.co.quietadmin.security.SecurityEventService.getIp;
 
 @Slf4j
 @Service
@@ -166,7 +169,7 @@ public class AuthService {
                               String userAgent,
                               String ipAddress,
                               String deviceId,
-                              String requestURI) {
+                              HttpServletRequest request) {
 
         String normalizedEmail = normalizeEmail(email);
 
@@ -175,28 +178,37 @@ public class AuthService {
         UserAccount user = userRepository
                 .findByEmailAndDeletedAtIsNull(normalizedEmail)
                 .orElseThrow(() -> {
+                    log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
                     loginThrottleService.recordFailure(normalizedEmail, ipAddress);
                     return new IllegalArgumentException("Invalid credentials");
                 });
 
         // If no password yet → must activate first
         if (user.getPasswordHash() == null) {
+            log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
+            loginThrottleService.recordFailure(normalizedEmail, ipAddress);
             securityEventService.authFailure(normalizedEmail, ipAddress, "must_activate_first");
             return AuthResponse.passwordSetupRequired(user.getEmail());
         }
 
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
             loginThrottleService.recordFailure(normalizedEmail, ipAddress);
             securityEventService.authFailure(normalizedEmail, ipAddress, "invalid_credentials");
-            throw new IllegalArgumentException("Invalid credentials");
+            return AuthResponse.failure();
+//            throw new IllegalArgumentException("Invalid credentials");
         }
 
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
+            loginThrottleService.recordFailure(normalizedEmail, ipAddress);
             securityEventService.authFailure(normalizedEmail, ipAddress, "email_not_verified");
             return AuthResponse.verificationRequired(user.getEmail());
         }
 
         if (user.getUserStatus() != UserStatus.ACTIVE) {
+            log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
+            loginThrottleService.recordFailure(normalizedEmail, ipAddress);
             securityEventService.authFailure(normalizedEmail, ipAddress, "account_not_active");
             throw new IllegalArgumentException("Account not active");
         }
@@ -205,12 +217,14 @@ public class AuthService {
                 membershipRepository.findByUserId(user.getId());
 
         if (membership.isEmpty()) {
+            log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
             securityEventService.authFailure(normalizedEmail, ipAddress, "user_has_no_group_membership");
             throw new IllegalStateException("User has no group membership");
         }
 
         QaGroup group = groupRepository.findById(membership.get().getGroupId())
                 .orElseThrow(() -> {
+                    log.info("Recording login failure for {} {}", normalizedEmail, ipAddress);
                     securityEventService.authFailure(
                             normalizedEmail,
                             ipAddress,

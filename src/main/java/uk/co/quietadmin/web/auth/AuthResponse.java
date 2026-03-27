@@ -22,7 +22,8 @@ public record AuthResponse(
         Long userId,
         String email,
         String firstName,
-        String lastName
+        String lastName,
+        String message
 
 ) {
 
@@ -51,7 +52,8 @@ public record AuthResponse(
                 userId,
                 email,
                 firstName,
-                lastName
+                lastName,
+                null
         );
     }
 
@@ -72,7 +74,8 @@ public record AuthResponse(
                 null,
                 email,
                 null,
-                null
+                null,
+                "Email address not verified"
         );
     }
 
@@ -96,6 +99,7 @@ public record AuthResponse(
                 null,
                 email,
                 null,
+                null,
                 null
         );
     }
@@ -117,7 +121,36 @@ public record AuthResponse(
                 null,
                 email,
                 null,
+                null,
+                "Password setup required"
+        );
+    }
+
+    public static AuthResponse failure() {
+        return new AuthResponse(
+                false,
+                false,
+                false,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null
+        );
+    }
+
+    public static AuthResponse failureWithMessage(String message) {
+        return new AuthResponse(
+                false, false, false, false,
+                null,
+                null, null, null,
+                null, null, null, null,
+                message
         );
     }
 
@@ -138,7 +171,8 @@ public record AuthResponse(
                 userId,
                 email,
                 firstName,
-                lastName
+                lastName,
+                null
         );
     }
 
@@ -159,7 +193,8 @@ public record AuthResponse(
                 userId,
                 email,
                 firstName,
-                lastName
+                lastName,
+                null
         );
     }
 }

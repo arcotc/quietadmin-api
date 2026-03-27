@@ -31,4 +31,7 @@ public class LoginThrottle {
 
     @Column(name="updated_at")
     private Instant updatedAt;
+
+    @Column(name="lockout_level", nullable=false)
+    private int lockoutLevel;
 }

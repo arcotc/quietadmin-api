@@ -72,13 +72,15 @@ public class AuthController {
                     userAgent,
                     ip,
                     deviceId,
-                    httpRequest.getRequestURI()
+                    httpRequest
             );
 
             addRefreshCookie(response, auth.refreshToken());
             return ResponseEntity.ok(auth.withoutRefreshToken());
         } catch (IllegalArgumentException illegalArgumentException) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(
+                    AuthResponse.failureWithMessage(illegalArgumentException.getMessage())
+            );
         }
     }
 

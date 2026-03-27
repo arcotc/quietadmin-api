@@ -1,0 +1,1 @@
+ALTER TABLE login_throttle ADD COLUMN lockout_level INT DEFAULT 0;

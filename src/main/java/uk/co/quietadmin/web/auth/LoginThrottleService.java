@@ -14,8 +14,7 @@ public class LoginThrottleService {
 
     // policy
     private final int maxFailures = 5;
-    private final long windowSeconds = 600;      // 10 minutes
-    private final long lockSeconds = 900;        // 15 minutes
+    private final long windowSeconds = 600; // 10 minutes
 
     public LoginThrottleService(LoginThrottleRepository repo) {
         this.repo = repo;
@@ -25,6 +24,7 @@ public class LoginThrottleService {
     public void assertLoginAllowed(String email, String ip) {
         repo.findByEmailAndIpAddress(email, ip).ifPresent(t -> {
             Instant now = Instant.now();
+
             if (t.getLockedUntil() != null && t.getLockedUntil().isAfter(now)) {
                 throw new IllegalArgumentException("Too many attempts. Try again later.");
             }
@@ -39,19 +39,34 @@ public class LoginThrottleService {
             LoginThrottle nt = new LoginThrottle();
             nt.setEmail(email);
             nt.setIpAddress(ip);
+            nt.setUpdatedAt(now);
+            nt.setLockoutLevel(0); // NEW
             return nt;
         });
 
         // reset window if outside window
-        if (t.getFirstFailedAt() == null || t.getFirstFailedAt().isBefore(now.minusSeconds(windowSeconds))) {
+        if (t.getFirstFailedAt() == null ||
+                t.getFirstFailedAt().isBefore(now.minusSeconds(windowSeconds))) {
+
             t.setFirstFailedAt(now);
+            t.setUpdatedAt(now);
             t.setFailedCount(0);
         }
 
         t.setFailedCount(t.getFailedCount() + 1);
 
         if (t.getFailedCount() >= maxFailures) {
+
+            int level = Math.min(t.getLockoutLevel() + 1, 3); // cap at level 3
+            t.setLockoutLevel(level);
+
+            long lockSeconds = lockDurationForLevel(level);
+
             t.setLockedUntil(now.plusSeconds(lockSeconds));
+
+            // reset failure window after lock
+            t.setFailedCount(0);
+            t.setFirstFailedAt(null);
         }
 
         repo.save(t);
@@ -63,7 +78,16 @@ public class LoginThrottleService {
             t.setFailedCount(0);
             t.setFirstFailedAt(null);
             t.setLockedUntil(null);
+            t.setLockoutLevel(0); // 🔥 reset escalation
             repo.save(t);
         });
+    }
+
+    private long lockDurationForLevel(int level) {
+        return switch (level) {
+            case 1 -> 900;     // 15 minutes
+            case 2 -> 3600;    // 1 hour
+            default -> 21600;  // 6 hours
+        };
     }
 }

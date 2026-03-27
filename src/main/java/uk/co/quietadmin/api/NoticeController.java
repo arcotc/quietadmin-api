@@ -26,8 +26,6 @@ public class NoticeController {
 
     @GetMapping("/active")
     public ResponseEntity<List<Notice>> active(Principal principal) {
-        log.debug("Get active notices");
-
         Membership membership = currentUserService.getMembership(principal.getName());
         return ResponseEntity.ok(
                 noticeService.getActiveNotices(
