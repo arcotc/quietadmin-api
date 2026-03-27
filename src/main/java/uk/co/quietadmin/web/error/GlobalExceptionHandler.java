@@ -53,17 +53,33 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<?> handleDuplicate(DataIntegrityViolationException ex) {
-
+    public ResponseEntity<ApiError> handleDuplicate(
+            DataIntegrityViolationException ex,
+            HttpServletRequest request
+    ) {
         if (ex.getMessage().contains("uq_team_name_per_group")) {
             return ResponseEntity
                     .badRequest()
-                    .body(Map.of("message", "A team with this name already exists"));
+                    .body(new ApiError(
+                            Instant.now(),
+                            400,
+                            ErrorCode.BAD_REQUEST,
+                            "A team with this name already exists",
+                            request.getRequestURI(),
+                            null
+                    ));
         }
 
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("message", "Unexpected error"));
+                .body(new ApiError(
+                        Instant.now(),
+                        500,
+                        ErrorCode.INTERNAL_ERROR,
+                        "Unexpected error",
+                        request.getRequestURI(),
+                        null
+                ));
     }
 
     @ExceptionHandler(RateLimitExceededException.class)
@@ -211,8 +227,10 @@ public class GlobalExceptionHandler {
 
     private static void logError(Exception ex, ApiError error) {
         log.error("An unexpected error occurred", ex);
-        if (error != null) {
-            log.info("Error details: {}", error);
+        if (error != null && error.status() < 500) {
+            log.warn("Client error: {}", error);
+        } else {
+            log.error("Server error", ex);
         }
     }
 }

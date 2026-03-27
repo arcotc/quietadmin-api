@@ -65,7 +65,7 @@ public class AuthController {
 
         String ip = IpResolver.resolve(httpRequest);
 
-        try {
+//        try {
             AuthResponse auth = authService.login(
                     request.email(),
                     request.password(),
@@ -77,11 +77,11 @@ public class AuthController {
 
             addRefreshCookie(response, auth.refreshToken());
             return ResponseEntity.ok(auth.withoutRefreshToken());
-        } catch (IllegalArgumentException illegalArgumentException) {
-            return ResponseEntity.badRequest().body(
-                    AuthResponse.failureWithMessage(illegalArgumentException.getMessage())
-            );
-        }
+//        } catch (IllegalArgumentException illegalArgumentException) {
+//            return ResponseEntity.badRequest().body(
+//                    AuthResponse.failureWithMessage(illegalArgumentException.getMessage())
+//            );
+//        }
     }
 
     // ===============================

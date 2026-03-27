@@ -5,7 +5,7 @@ import java.util.List;
 
 public record ApiError(
         Instant timestamp,
-        int status,
+        Integer status,
         ErrorCode error,
         String message,
         String path,
