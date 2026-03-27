@@ -1,5 +1,6 @@
 package uk.co.quietadmin.config;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -10,9 +11,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.*;
+
 import uk.co.quietadmin.security.JwtAuthenticationFilter;
 import uk.co.quietadmin.security.RestAccessDeniedHandler;
 import uk.co.quietadmin.security.RestAuthenticationEntryPoint;
@@ -20,17 +20,31 @@ import uk.co.quietadmin.security.RestAuthenticationEntryPoint;
 import java.util.List;
 
 @Configuration
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtFilter;
+    private final RestAuthenticationEntryPoint entryPoint;
+    private final RestAccessDeniedHandler deniedHandler;
+
+    // ==========================================
+    // PASSWORD ENCODER
+    // ==========================================
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    // ==========================================
+    // CORS CONFIG
+    // ==========================================
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
 
         CorsConfiguration config = new CorsConfiguration();
+
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
@@ -39,70 +53,92 @@ public class SecurityConfig {
                 "https://quietadmin.co.uk",
                 "https://www.quietadmin.co.uk"
         ));
-        config.setAllowedMethods(List.of("*"));
+
+        config.setAllowedMethods(List.of(
+                "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"
+        ));
+
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 
+        // 🔒 Important: expose only what you need (optional)
+        config.setExposedHeaders(List.of("Set-Cookie"));
+
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
 
+        source.registerCorsConfiguration("/**", config);
         return source;
     }
 
+    // ==========================================
+    // SECURITY FILTER CHAIN
+    // ==========================================
+
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http,
-                                           JwtAuthenticationFilter jwtFilter,
-                                           RestAuthenticationEntryPoint entryPoint,
-                                           RestAccessDeniedHandler deniedHandler)
-        throws Exception {
-            http
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+        http
+                // ---------------------------
+                // Core settings
+                // ---------------------------
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
+
+                // ---------------------------
+                // Exception handling
+                // ---------------------------
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(deniedHandler)
                 )
+
+                // ---------------------------
+                // Authorisation rules
+                // ---------------------------
                 .authorizeHttpRequests(auth -> auth
-                        // Preflight
+
+                        // Preflight requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // Public auth endpoints
+                        // ===== PUBLIC AUTH =====
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/register",
                                 "/api/auth/verify",
                                 "/api/auth/refresh",
-                                "/api/stripe/webhook",
                                 "/api/auth/resend-verification",
                                 "/api/auth/set-password",
                                 "/api/auth/password-reset/request",
-                                "/api/auth/password-reset/confirm"
+                                "/api/auth/password-reset/confirm",
+                                "/api/stripe/webhook"
                         ).permitAll()
-                        .requestMatchers("/api/auth/sessions/**").authenticated()
-                        .requestMatchers("/api/auth/logout-all").authenticated()
 
-                        // Swagger
+                        // ===== SWAGGER =====
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
                         ).permitAll()
 
-                        // Everything else under /api/auth requires auth
-                        .requestMatchers("/api/auth/**").authenticated()
-
-                        // All API requires auth
+                        // ===== EVERYTHING ELSE UNDER /api =====
                         .requestMatchers("/api/**").authenticated()
 
-                        // Non-api resources
+                        // ===== NON API =====
                         .anyRequest().permitAll()
                 )
-                .addFilterBefore(jwtFilter,
-                        UsernamePasswordAuthenticationFilter.class)
+
+                // ---------------------------
+                // JWT Filter
+                // ---------------------------
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+
+                // ---------------------------
+                // Disable unused auth
+                // ---------------------------
                 .httpBasic(httpBasic -> httpBasic.disable())
                 .formLogin(form -> form.disable());
 
