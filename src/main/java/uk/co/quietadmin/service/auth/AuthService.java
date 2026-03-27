@@ -294,6 +294,25 @@ public class AuthService {
             throw new IllegalArgumentException("Session expired due to inactivity");
         }
 
+        if (stored.getReplacedByTokenHash() != null) {
+            securityEventService.sessionAnomaly(
+                    stored.getUserId(),
+                    ipAddress,
+                    "refresh_token_reuse_detected"
+            );
+
+            revokeAllUserSessions(stored.getUserId(), now);
+            throw new IllegalArgumentException("Session compromised");
+        }
+
+        if (!stored.getIpAddress().equals(ipAddress)) {
+            securityEventService.sessionAnomaly(
+                    stored.getUserId(),
+                    ipAddress,
+                    "ip_changed_during_session"
+            );
+        }
+
         UserAccount user = userRepository.findById(stored.getUserId())
                 .orElseThrow(() -> {
                     log.warn("DATA_INCONSISTENCY userId={} reason=user_not_found", stored.getUserId());

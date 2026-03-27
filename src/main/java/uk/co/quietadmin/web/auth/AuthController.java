@@ -360,7 +360,7 @@ public class AuthController {
                 .secure(secureCookies)
                 .path("/")
                 .maxAge(refreshExpirationSeconds)
-                .sameSite("Lax")
+                .sameSite("Strict")
                 .build();
 
         response.addHeader("Set-Cookie", cookie.toString());
@@ -373,7 +373,7 @@ public class AuthController {
                 .secure(secureCookies)
                 .path("/")
                 .maxAge(0)
-                .sameSite("Lax")
+                .sameSite("Strict")
                 .build();
 
         response.addHeader("Set-Cookie", cookie.toString());
