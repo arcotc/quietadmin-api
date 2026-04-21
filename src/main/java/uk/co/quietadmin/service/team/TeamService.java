@@ -294,9 +294,9 @@ public class TeamService {
                 .map(u -> {
                     Membership m = membershipMap.get(u.getId());
 
-                    if (m == null) {
-                        throw new IllegalStateException("User not in group");
-                    }
+//                    if (m == null) {
+//                        throw new IllegalStateException("User not in group");
+//                    }
 
                     return new MemberDto(
                             u.getId(),

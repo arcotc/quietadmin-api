@@ -2,6 +2,7 @@ package uk.co.quietadmin.sharedlinks.api;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uk.co.quietadmin.domain.customer.CurrentUserService;
 import uk.co.quietadmin.domain.group.Membership;
@@ -198,6 +199,19 @@ public class SharedLinksController {
         );
 
         return toResponse(updated);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            Principal principal,
+            @PathVariable Long id
+    ) {
+        Membership membership = currentUserService.getMembership(principal.getName());
+        requireEditorOrAbove(membership);
+
+        service.archiveLink(membership.getUserId(), id);
+
+        return ResponseEntity.noContent().build();
     }
 
     private SharedLinkFolderResponse toFolderResponse(SharedLinkFolder f) {

@@ -112,11 +112,12 @@ public class NoticeController {
 
     @GetMapping
     public ResponseEntity<List<Notice>> all(Principal principal) {
-        currentUserService.requireAdmin(principal.getName());
         Membership membership = currentUserService.getMembership(principal.getName());
-        return ResponseEntity.ok(
-                noticeService.getAllForGroup(membership.getGroupId())
-        );
+        if (membership.isAdmin()) {
+            return ResponseEntity.ok(noticeService.getAllForGroup(membership.getGroupId()));
+        } else {
+            return ResponseEntity.ok(noticeService.getActiveNotices(membership.getGroupId(), membership.getUserId()));
+        }
     }
 
     @GetMapping("/{id}")
