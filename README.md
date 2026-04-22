@@ -92,7 +92,34 @@ http://localhost:8025
 
 ------------------------------------------------------------------------
 
-# 4️⃣ Run the API Locally
+# 4️⃣ Run Tests
+
+Tests use H2 in-memory database. No external services required.
+
+Run all tests:
+
+    ./gradlew test
+
+Run with output:
+
+    ./gradlew test --info
+
+View HTML report after a run:
+
+    open build/reports/tests/test/index.html
+
+### Test coverage
+
+| Suite | What it tests |
+|---|---|
+| `TeamServiceTest` | Admin creates team, non-admin blocked, blank/duplicate name, soft delete, cross-group add member |
+| `NoticeServiceTest` | Defaults to DRAFT, publish draft, cannot publish expired, cross-group delete blocked |
+| `RotaServiceTest` | Admin creates rota, non-admin blocked, wrong-user decline, cross-group access denied, admin delete |
+| `AuthSecurityTest` | 401 without token, 401 with invalid token, public endpoints accessible |
+
+------------------------------------------------------------------------
+
+# 5️⃣ Run the API Locally (Development)
 
     ./gradlew clean build
     ./gradlew bootRun

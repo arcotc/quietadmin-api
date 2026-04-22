@@ -107,6 +107,14 @@ public class SharedLinksService {
         SharedLinkFolder folder = folderRepo.findByIdAndGroupId(folderId, groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Folder not found"));
 
+        // Move links to unsorted rather than leaving orphaned foreign keys
+        List<SharedLink> linksInFolder =
+                linkRepo.findByGroupIdAndArchivedAtIsNullAndFolder_IdOrderBySortOrderAsc(groupId, folderId);
+        for (SharedLink link : linksInFolder) {
+            link.setFolder(null);
+        }
+        linkRepo.saveAll(linksInFolder);
+
         folderRepo.delete(folder);
     }
 
