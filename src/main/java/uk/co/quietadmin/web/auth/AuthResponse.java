@@ -181,20 +181,6 @@ public record AuthResponse(
        ========================= */
 
     public AuthResponse verifyRefreshToken() {
-        return new AuthResponse(
-                authenticated,
-                verificationRequired,
-                checkoutRequired,
-                true,
-                checkoutUrl,
-                accessToken,
-                null,
-                expiresAt,
-                userId,
-                email,
-                firstName,
-                lastName,
-                null
-        );
+        return withoutRefreshToken();
     }
 }

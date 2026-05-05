@@ -75,7 +75,9 @@ public class AuthController {
                     httpRequest
             );
 
-            addRefreshCookie(response, auth.refreshToken());
+            if (auth.authenticated()) {
+                addRefreshCookie(response, auth.refreshToken());
+            }
             return ResponseEntity.ok(auth.withoutRefreshToken());
 //        } catch (IllegalArgumentException illegalArgumentException) {
 //            return ResponseEntity.badRequest().body(
@@ -302,7 +304,7 @@ public class AuthController {
 
         if (auth.authenticated()) {
             addRefreshCookie(response, auth.refreshToken());
-            return ResponseEntity.ok(auth.verifyRefreshToken());
+            return ResponseEntity.ok(auth.withoutRefreshToken());
         }
 
         return ResponseEntity.ok(auth);

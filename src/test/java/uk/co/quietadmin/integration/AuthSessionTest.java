@@ -5,6 +5,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.*;
+import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,8 +28,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -165,6 +168,50 @@ class AuthSessionTest {
                         .header("User-Agent", USER_AGENT)
                         .cookie(new Cookie("refresh_token", refreshRaw)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void failedLogin_doesNotIssueRefreshCookie() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "auth-session-test@test.local",
+                                  "password": "wrong-password"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authenticated").value(false))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    @Test
+    void verifyInvitedUserWithoutPassword_doesNotIssueTokens() throws Exception {
+        String rawToken = "verify-no-password-token-" + System.nanoTime();
+        String email = "verify-no-password-" + System.nanoTime() + "@test.local";
+
+        UserAccount invited = new UserAccount();
+        invited.setEmail(email);
+        invited.setFirstName("Verify");
+        invited.setLastName("NoPassword");
+        invited.setPasswordHash(null);
+        invited.setUserStatus(UserStatus.INVITED);
+        invited.setEmailVerified(false);
+        invited.setEmailVerificationToken(TokenHash.sha256(rawToken));
+        invited.setEmailVerificationExpiresAt(Instant.now().plusSeconds(3600));
+        invited = userRepo.save(invited);
+
+        try {
+            mockMvc.perform(get("/api/auth/verify").param("token", rawToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.authenticated").value(false))
+                    .andExpect(jsonPath("$.passwordSetupRequired").value(true))
+                    .andExpect(jsonPath("$.accessToken").value(nullValue()))
+                    .andExpect(jsonPath("$.refreshToken").value(nullValue()))
+                    .andExpect(header().doesNotExist("Set-Cookie"));
+        } finally {
+            jdbc.update("DELETE FROM user_account WHERE id = ?", invited.getId());
+        }
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────

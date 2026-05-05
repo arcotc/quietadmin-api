@@ -49,7 +49,7 @@ public class PendingSignup {
     @Column(name="group_name", nullable = false)
     private String groupName;
 
-    @Column(name="password_hash", nullable = false)
+    @Column(name="password_hash")
     private String passwordHash;
 
     // Email verification for the user that will be created post-checkout

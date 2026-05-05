@@ -413,6 +413,11 @@ public class AuthService {
 
         user.setEmailVerified(true);
 
+        if (user.getPasswordHash() == null) {
+            userRepository.save(user);
+            return AuthResponse.passwordSetupRequired(user.getEmail());
+        }
+
         user.setUserStatus(UserStatus.ACTIVE);
         userRepository.save(user);
 
