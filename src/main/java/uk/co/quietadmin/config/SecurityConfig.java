@@ -1,6 +1,7 @@
 package uk.co.quietadmin.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -11,6 +12,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.*;
 
 import uk.co.quietadmin.security.JwtAuthenticationFilter;
@@ -22,6 +24,10 @@ import java.util.List;
 @Configuration
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    // HSTS is only meaningful over HTTPS; disable for local HTTP dev
+    @Value("${security.headers.hsts-enabled:true}")
+    private boolean hstsEnabled;
 
     private final JwtAuthenticationFilter jwtFilter;
     private final RestAuthenticationEntryPoint entryPoint;
@@ -79,6 +85,27 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
         http
+                // ---------------------------
+                // Security response headers
+                // ---------------------------
+                .headers(headers -> {
+                    headers
+                        .contentTypeOptions(Customizer.withDefaults())        // X-Content-Type-Options: nosniff
+                        .frameOptions(frame -> frame.deny())                  // X-Frame-Options: DENY
+                        .referrerPolicy(referrer ->
+                            referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
+                        );
+
+                    if (hstsEnabled) {
+                        headers.httpStrictTransportSecurity(hsts -> hsts
+                            .includeSubDomains(true)
+                            .maxAgeInSeconds(31536000)  // 1 year
+                        );
+                    } else {
+                        headers.httpStrictTransportSecurity(hsts -> hsts.disable());
+                    }
+                })
+
                 // ---------------------------
                 // Core settings
                 // ---------------------------

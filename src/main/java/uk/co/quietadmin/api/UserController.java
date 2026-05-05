@@ -33,7 +33,7 @@ public class UserController {
             return ResponseEntity.status(401).build();
         }
 
-        UserAccount user = userRepository.findByEmail(principal.getName())
+        UserAccount user = userRepository.findByEmailAndDeletedAtIsNull(principal.getName())
                 .orElseThrow(() -> new IllegalStateException("User not found"));
 
         Membership membership = membershipRepository
