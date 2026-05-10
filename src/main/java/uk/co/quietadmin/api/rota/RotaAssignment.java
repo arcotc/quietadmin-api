@@ -21,6 +21,9 @@ public class RotaAssignment {
     @Column
     private Long userId;
 
+    @Column(name = "preferred_team_id")
+    private Long preferredTeamId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private RotaAssignmentStatus status = RotaAssignmentStatus.ASSIGNED;
@@ -42,6 +45,10 @@ public class RotaAssignment {
 
     public Long getUserId() {
         return userId;
+    }
+
+    public Long getPreferredTeamId() {
+        return preferredTeamId;
     }
 
     public RotaAssignmentStatus getStatus() {
@@ -66,6 +73,10 @@ public class RotaAssignment {
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public void setPreferredTeamId(Long preferredTeamId) {
+        this.preferredTeamId = preferredTeamId;
     }
 
     public void setStatus(RotaAssignmentStatus status) {

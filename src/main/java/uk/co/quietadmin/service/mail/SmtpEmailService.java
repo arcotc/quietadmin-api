@@ -10,8 +10,10 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import uk.co.quietadmin.domain.notice.Notice;
 
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -105,6 +107,36 @@ public class SmtpEmailService implements EmailService {
                 firstName,
                 notice.getTitle(),
                 formattedExpiry
+        );
+
+        sendHtmlEmail(toEmail, subject, html);
+    }
+
+    /* ======================================================
+       ROTA SHARE EMAIL
+       ====================================================== */
+
+    @Override
+    public void sendRotaShareEmail(
+            String toEmail,
+            String firstName,
+            String rotaName,
+            LocalDate rotaDate,
+            List<RotaShareEmailAssignment> assignments,
+            String declineAllLink
+    ) {
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy");
+        String formattedDate = rotaDate.format(formatter);
+
+        String subject = "Your assignment — " + rotaName + ", " + formattedDate;
+
+        String html = buildRotaShareTemplate(
+                firstName,
+                rotaName,
+                formattedDate,
+                assignments,
+                declineAllLink
         );
 
         sendHtmlEmail(toEmail, subject, html);
@@ -394,6 +426,118 @@ public class SmtpEmailService implements EmailService {
                 </body>
                 </html>
                 """.formatted(greeting, noticeTitle, expiry);
+    }
+
+    private String buildRotaShareTemplate(
+            String firstName,
+            String rotaName,
+            String formattedDate,
+            List<RotaShareEmailAssignment> assignments,
+            String declineAllLink
+    ) {
+
+        String greeting = (firstName != null && !firstName.isBlank())
+                ? "Hi " + firstName + ","
+                : "Hello,";
+
+        String heading = assignments.size() == 1
+                ? "Your rota assignment"
+                : "Your rota assignments";
+
+        String intro = assignments.size() == 1
+                ? "You have been assigned to the following role:"
+                : "You have been assigned to the following roles:";
+
+        // --- assignment rows ---
+        StringBuilder rows = new StringBuilder();
+        for (int i = 0; i < assignments.size(); i++) {
+            RotaShareEmailAssignment a = assignments.get(i);
+            String borderStyle = i == 0
+                    ? "border-top:1px solid #F3F4F6;"
+                    : "border-top:1px solid #F3F4F6;";
+            rows.append(
+                "<tr><td style=\"padding:12px 0;" + borderStyle + "\">" +
+                "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>" +
+                "<td style=\"font-size:15px;color:#1F2937;font-weight:500;\">" +
+                escapeHtml(a.roleName()) +
+                "</td>" +
+                "<td align=\"right\">" +
+                "<a href=\"" + a.declineLink() + "\" " +
+                "style=\"font-size:13px;color:#6B7280;text-decoration:underline;\">" +
+                "Can&#39;t do this</a>" +
+                "</td></tr></table></td></tr>"
+            );
+        }
+
+        // --- decline all section (only for multiple positions) ---
+        String declineAllSection = "";
+        if (assignments.size() > 1) {
+            declineAllSection =
+                "<tr><td style=\"padding:28px 0 8px 0;border-top:1px solid #F3F4F6;\">" +
+                "<p style=\"margin:0 0 16px 0;font-size:14px;color:#6B7280;text-align:center;\">" +
+                "Can&#39;t make it at all?" +
+                "</p>" +
+                "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>" +
+                "<td align=\"center\">" +
+                "<a href=\"" + declineAllLink + "\" " +
+                "style=\"display:inline-block;padding:12px 24px;font-weight:500;" +
+                "font-size:14px;color:#ffffff;text-decoration:none;border-radius:8px;" +
+                "background:linear-gradient(90deg,#1E6BD6 0%,#34B67A 100%);\">" +
+                "I can&#39;t make it at all" +
+                "</a>" +
+                "</td></tr></table>" +
+                "<p style=\"margin:12px 0 0 0;font-size:13px;color:#9CA3AF;text-align:center;\">" +
+                "This will remove you from all positions on this rota. No account needed." +
+                "</p>" +
+                "</td></tr>";
+        }
+
+        return
+            "<!DOCTYPE html>" +
+            "<html>" +
+            "<head>" +
+            "<meta charset=\"UTF-8\"/>" +
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"/>" +
+            "<title>Your rota assignment</title>" +
+            "</head>" +
+            "<body style=\"margin:0;padding:0;background:#F7F9FB;" +
+            "font-family:Inter,system-ui,-apple-system,sans-serif;color:#1F2937;\">" +
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"padding:40px 20px;\">" +
+            "<tr><td align=\"center\">" +
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"" +
+            " style=\"max-width:520px;background:#ffffff;border-radius:16px;" +
+            "padding:40px 32px;box-shadow:0 10px 30px rgba(15,23,42,0.05);\">" +
+            "<tr><td align=\"center\" style=\"padding-bottom:24px;\">" +
+            "<h2 style=\"margin:0;font-weight:600;\">" + escapeHtml(heading) + "</h2>" +
+            "</td></tr>" +
+            "<tr><td style=\"font-size:15px;line-height:1.6;color:#374151;\">" +
+            "<p style=\"margin:0 0 6px 0;\">" + escapeHtml(greeting) + "</p>" +
+            "<p style=\"margin:0 0 4px 0;\"><strong>" + escapeHtml(rotaName) + "</strong></p>" +
+            "<p style=\"margin:0 0 20px 0;color:#6B7280;\">" + escapeHtml(formattedDate) + "</p>" +
+            "<p style=\"margin:0 0 8px 0;\">" + escapeHtml(intro) + "</p>" +
+            "</td></tr>" +
+            rows +
+            declineAllSection +
+            "<tr><td style=\"padding-top:24px;font-size:13px;color:#9CA3AF;\">" +
+            "Clicking &#39;Can&#39;t do this&#39; will update the rota. No account needed." +
+            "</td></tr>" +
+            "</table>" +
+            "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"padding:24px 0 0 0;\">" +
+            "<tr><td align=\"center\" style=\"font-size:12px;color:#9CA3AF;\">" +
+            "QuietAdmin<br/>No messaging. No feeds. Just clarity." +
+            "</td></tr></table>" +
+            "</td></tr></table>" +
+            "</body></html>";
+    }
+
+    private static String escapeHtml(String text) {
+        if (text == null) return "";
+        return text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("’", "&#39;");
     }
 
     /* ======================================================

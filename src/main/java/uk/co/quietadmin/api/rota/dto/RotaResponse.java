@@ -67,6 +67,8 @@ public class RotaResponse {
         private String roleName;
         private Long userId;
         private String displayName;
+        private Long preferredTeamId;
+        private String preferredTeamName;
         private RotaAssignmentStatus status;
         private boolean assignedToCurrentUser;
 
@@ -84,6 +86,14 @@ public class RotaResponse {
 
         public String getDisplayName() {
             return displayName;
+        }
+
+        public Long getPreferredTeamId() {
+            return preferredTeamId;
+        }
+
+        public String getPreferredTeamName() {
+            return preferredTeamName;
         }
 
         public RotaAssignmentStatus getStatus() {
@@ -108,6 +118,14 @@ public class RotaResponse {
 
         public void setDisplayName(String displayName) {
             this.displayName = displayName;
+        }
+
+        public void setPreferredTeamId(Long preferredTeamId) {
+            this.preferredTeamId = preferredTeamId;
+        }
+
+        public void setPreferredTeamName(String preferredTeamName) {
+            this.preferredTeamName = preferredTeamName;
         }
 
         public void setStatus(RotaAssignmentStatus status) {

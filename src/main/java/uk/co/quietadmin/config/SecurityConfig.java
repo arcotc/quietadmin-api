@@ -141,6 +141,8 @@ public class SecurityConfig {
                                 "/api/auth/set-password",
                                 "/api/auth/password-reset/request",
                                 "/api/auth/password-reset/confirm",
+                                "/api/rotas/decline",
+                                "/api/rotas/decline-all",
                                 "/api/stripe/webhook"
                         ).permitAll()
 

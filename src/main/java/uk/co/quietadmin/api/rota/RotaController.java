@@ -94,6 +94,27 @@ public class RotaController {
         );
     }
 
+    @PostMapping("/{rotaId}/share")
+    public ResponseEntity<Void> share(
+            Principal principal,
+            @PathVariable Long rotaId
+    ) {
+        rotaService.shareRota(principal.getName(), rotaId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/decline")
+    public ResponseEntity<Void> declineByToken(@RequestParam String token) {
+        rotaService.declineByToken(token);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/decline-all")
+    public ResponseEntity<Void> declineAllByToken(@RequestParam String token) {
+        rotaService.declineAllByToken(token);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/{rotaId}/assignments/{assignmentId}")
     public ResponseEntity<RotaResponse> replaceAssignment(
             Principal principal,

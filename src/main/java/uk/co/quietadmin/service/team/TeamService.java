@@ -54,7 +54,11 @@ public class TeamService {
 
         return teams.stream()
                 .map(team -> {
-                    long count = teamMembershipRepository.countByTeamId(team.getId());
+                    long count = teamMembershipRepository
+                            .countVisibleMembersByTeamIdAndGroupId(
+                                    team.getId(),
+                                    membership.getGroupId()
+                            );
 
                     boolean isMember = myTeamIds.contains(team.getId());
 
@@ -144,7 +148,10 @@ public class TeamService {
         teamRepository.save(team);
 
         long membersCount =
-                teamMembershipRepository.countByTeamId(team.getId());
+                teamMembershipRepository.countVisibleMembersByTeamIdAndGroupId(
+                        team.getId(),
+                        membership.getGroupId()
+                );
 
         boolean isMember =
                 teamMembershipRepository.existsByTeamIdAndUserId(
@@ -269,6 +276,7 @@ public class TeamService {
 
         List<Long> userIds = memberships.stream()
                 .map(TeamMembership::getUserId)
+                .distinct()
                 .toList();
 
         if (userIds.isEmpty()) {
@@ -294,9 +302,9 @@ public class TeamService {
                 .map(u -> {
                     Membership m = membershipMap.get(u.getId());
 
-//                    if (m == null) {
-//                        throw new IllegalStateException("User not in group");
-//                    }
+                    if (m == null) {
+                        return null;
+                    }
 
                     return new MemberDto(
                             u.getId(),
@@ -307,6 +315,7 @@ public class TeamService {
                             u.getUserStatus()
                     );
                 })
+                .filter(java.util.Objects::nonNull)
                 .toList();
     }
 
@@ -316,7 +325,10 @@ public class TeamService {
 
     private TeamDto toDto(Team team, Set<Long> myTeamIds) {
         long membersCount =
-                teamMembershipRepository.countByTeamId(team.getId());
+                teamMembershipRepository.countVisibleMembersByTeamIdAndGroupId(
+                        team.getId(),
+                        team.getGroupId()
+                );
 
         boolean isMember = myTeamIds.contains(team.getId());
 
@@ -338,7 +350,10 @@ public class TeamService {
                 .findByIdAndGroupIdAndDeletedAtIsNull(teamId, membership.getGroupId())
                 .orElseThrow(() -> new IllegalStateException("Team not found"));
 
-        long memberCount = teamMembershipRepository.countByTeamId(teamId);
+        long memberCount = teamMembershipRepository.countVisibleMembersByTeamIdAndGroupId(
+                teamId,
+                membership.getGroupId()
+        );
 
         boolean isMember = teamMembershipRepository
                 .existsByTeamIdAndUserId(teamId, membership.getUserId());

@@ -9,6 +9,8 @@ public class CreateRotaAssignmentRequest {
 
     private Long userId;
 
+    private Long preferredTeamId;
+
     public String getRoleName() {
         return roleName;
     }
@@ -17,11 +19,19 @@ public class CreateRotaAssignmentRequest {
         return userId;
     }
 
+    public Long getPreferredTeamId() {
+        return preferredTeamId;
+    }
+
     public void setRoleName(String roleName) {
         this.roleName = roleName;
     }
 
     public void setUserId(Long userId) {
         this.userId = userId;
+    }
+
+    public void setPreferredTeamId(Long preferredTeamId) {
+        this.preferredTeamId = preferredTeamId;
     }
 }
