@@ -134,7 +134,31 @@ http://localhost:8180/swagger-ui.html
 
 ------------------------------------------------------------------------
 
-# 5️⃣ Authentication Flow
+# 6️⃣ Stripe Webhook Listener (Local Debugging)
+
+Install the Stripe CLI (macOS):
+
+    brew install stripe/stripe-cli/stripe
+
+Log in:
+
+    stripe login
+
+Run the listener:
+
+    ./stripe_webhook_listener.sh
+
+Or directly:
+
+    stripe listen --forward-to localhost:8180/api/stripe/webhook
+
+The CLI will print a webhook signing secret (`whsec_...`) — set this as your `stripe.webhook.secret` in `application-local.properties`.
+
+⚠ The signing secret from `stripe listen` is different from your production webhook secret. Do not mix them.
+
+------------------------------------------------------------------------
+
+# 7️⃣ Authentication Flow
 
 ### Registration
 
@@ -157,7 +181,7 @@ http://localhost:8180/swagger-ui.html
 
 ------------------------------------------------------------------------
 
-# 6️⃣ Useful Endpoints
+# 7️⃣ Useful Endpoints
 
 POST /api/auth/register\
 POST /api/auth/login\
@@ -169,7 +193,7 @@ GET /api/auth/verify?token=...
 
 ------------------------------------------------------------------------
 
-# 7️⃣ Production Checklist
+# 8️⃣ Production Checklist
 
 -   Use environment variables for JWT secrets
 -   Enable HTTPS
