@@ -1,6 +1,7 @@
 package uk.co.quietadmin.service.notice;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.notice.Notice;
@@ -8,24 +9,27 @@ import uk.co.quietadmin.domain.notice.NoticeRepository;
 
 import org.springframework.security.access.AccessDeniedException;
 import uk.co.quietadmin.domain.notice.NoticeStatus;
-import uk.co.quietadmin.domain.team.NoticeTeamVisibility;
-import uk.co.quietadmin.domain.team.NoticeTeamVisibilityRepository;
-import uk.co.quietadmin.domain.team.Team;
+import uk.co.quietadmin.domain.notice.NoticeTeamVisibility;
+import uk.co.quietadmin.domain.notice.NoticeTeamVisibilityRepository;
 import uk.co.quietadmin.domain.team.TeamRepository;
 import uk.co.quietadmin.security.SecurityEventService;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class NoticeService {
     private final NoticeRepository noticeRepository;
     private final NoticeTeamVisibilityRepository noticeTeamVisibilityRepository;
     private final TeamRepository teamRepository;
     private final SecurityEventService securityEventService;
 
+    @Transactional(readOnly = true)
     public List<Notice> getActiveNotices(Long groupId, Long userId) {
         return noticeRepository.findVisibleActiveNotices(
                 groupId,
@@ -34,12 +38,14 @@ public class NoticeService {
         );
     }
 
-    public Notice create(Membership membership, Notice notice) {
+    public Notice create(Membership membership, Notice notice, List<Long> teamIds) {
         if (notice.getStatus() == null) {
             notice.setStatus(NoticeStatus.DRAFT);
         }
 
         Notice saved = noticeRepository.save(notice);
+        replaceVisibility(saved.getId(), membership.getGroupId(), teamIds);
+        attachVisibility(List.of(saved));
 
         securityEventService.audit(
                 "NOTICE_CREATED",
@@ -51,28 +57,23 @@ public class NoticeService {
         return saved;
     }
 
-    public Notice update(Long id, Long groupId, String title, String content, Instant expiresAt) throws AccessDeniedException {
+    public Notice update(Long id, Long groupId, String title, String content, Instant expiresAt, List<Long> teamIds) throws AccessDeniedException {
         Notice n = noticeRepository.findByIdAndGroupId(id, groupId)
                 .orElseThrow(() -> new AccessDeniedException("Not your group"));
-
-        if (!n.getGroupId().equals(groupId)) {
-            throw new AccessDeniedException("Not your group.");
-        }
 
         n.setTitle(title);
         n.setContent(content);
         n.setExpiresAt(expiresAt);
 
-        return noticeRepository.save(n);
+        Notice saved = noticeRepository.save(n);
+        replaceVisibility(saved.getId(), groupId, teamIds);
+        attachVisibility(List.of(saved));
+        return saved;
     }
 
     public void delete(Membership membership, Long id) throws AccessDeniedException {
         Notice n = noticeRepository.findByIdAndGroupId(id, membership.getGroupId())
                 .orElseThrow(() -> new AccessDeniedException("Not your group"));
-
-        if (!n.getGroupId().equals(membership.getGroupId())) {
-            throw new AccessDeniedException("Not your group.");
-        }
 
         securityEventService.audit(
                 "NOTICE_DELETED",
@@ -123,36 +124,44 @@ public class NoticeService {
         return noticeRepository.save(n);
     }
 
+    @Transactional(readOnly = true)
     public List<Notice> getDrafts(Long groupId) {
-        return noticeRepository.findDraftNotices(groupId);
+        return attachVisibility(noticeRepository.findDraftNotices(groupId));
     }
 
+    @Transactional(readOnly = true)
     public List<Notice> getAllForGroup(Long groupId) {
-        return noticeRepository.findByGroupIdOrdered(groupId);
+        return attachVisibility(noticeRepository.findByGroupIdOrdered(groupId));
     }
 
-    public Notice getActiveNoticeById(Long id, Long groupId) {
+    @Transactional(readOnly = true)
+    public Notice getActiveNoticeById(Long id, Membership membership) {
 
-        Notice notice = noticeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Notice not found"));
+        Notice notice;
 
-        if (!notice.getGroupId().equals(groupId)) {
-            throw new RuntimeException("Forbidden");
+        if (membership.isAdmin()) {
+            notice = noticeRepository.findActiveNoticeByIdAndGroupId(
+                            id,
+                            membership.getGroupId(),
+                            Instant.now()
+                    )
+                    .orElseThrow(() -> new RuntimeException("Notice not found"));
+        } else {
+            notice = noticeRepository.findVisibleActiveNoticeById(
+                        id,
+                        membership.getGroupId(),
+                        membership.getUserId(),
+                        Instant.now()
+                ).orElseThrow(() -> new RuntimeException("Notice not found"));
         }
 
-        if (!notice.getStatus().equals(NoticeStatus.ACTIVE)) {
-            throw new RuntimeException("Not active");
+        if (membership.isAdmin()) {
+            attachVisibility(List.of(notice));
         }
-
-        if (notice.getExpiresAt() != null &&
-                notice.getExpiresAt().isBefore(Instant.now())) {
-            throw new RuntimeException("Expired");
-        }
-
         return notice;
     }
 
-    public void setVisibility(Long noticeId, Long groupId, List<Long> teamIds) {
+    private void replaceVisibility(Long noticeId, Long groupId, List<Long> teamIds) {
 
         noticeRepository.findByIdAndGroupId(noticeId, groupId)
                 .orElseThrow(() -> new RuntimeException("Not your group"));
@@ -161,14 +170,10 @@ public class NoticeService {
 
         if (teamIds == null || teamIds.isEmpty()) return;
 
-        for (Long teamId : teamIds) {
+        for (Long teamId : teamIds.stream().distinct().toList()) {
 
-            Team team = teamRepository.findByIdAndDeletedAtIsNull(teamId)
-                    .orElseThrow();
-
-            if (!team.getGroupId().equals(groupId)) {
-                throw new RuntimeException("Forbidden team.");
-            }
+            teamRepository.findByIdAndGroupIdAndDeletedAtIsNull(teamId, groupId)
+                    .orElseThrow(() -> new RuntimeException("Forbidden team."));
 
             NoticeTeamVisibility ntv = new NoticeTeamVisibility();
             ntv.setNoticeId(noticeId);
@@ -176,5 +181,32 @@ public class NoticeService {
 
             noticeTeamVisibilityRepository.save(ntv);
         }
+    }
+
+    private List<Notice> attachVisibility(List<Notice> notices) {
+        if (notices == null || notices.isEmpty()) {
+            return notices;
+        }
+
+        List<Long> noticeIds = notices.stream()
+                .map(Notice::getId)
+                .toList();
+
+        Map<Long, List<Long>> teamIdsByNoticeId = noticeTeamVisibilityRepository
+                .findByNoticeIdIn(noticeIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        NoticeTeamVisibility::getNoticeId,
+                        Collectors.mapping(
+                                NoticeTeamVisibility::getTeamId,
+                                Collectors.toCollection(ArrayList::new)
+                        )
+                ));
+
+        notices.forEach(notice -> notice.setTeamIds(
+                teamIdsByNoticeId.getOrDefault(notice.getId(), List.of())
+        ));
+
+        return notices;
     }
 }

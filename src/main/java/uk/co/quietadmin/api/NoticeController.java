@@ -60,7 +60,7 @@ public class NoticeController {
         notice.setExpiresAt(request.expiresAt());
         notice.setCreatedBy(membership.getUserId());
 
-        return ResponseEntity.ok(noticeService.create(membership, notice));
+        return ResponseEntity.ok(noticeService.create(membership, notice, request.teamIds()));
     }
 
     @PutMapping("/{id}")
@@ -81,7 +81,8 @@ public class NoticeController {
                         membership.getGroupId(),
                         request.title(),
                         clean,
-                        request.expiresAt()
+                        request.expiresAt(),
+                        request.teamIds()
                 )
         );
     }
@@ -127,45 +128,22 @@ public class NoticeController {
     ) {
         Membership membership = currentUserService.getMembership(principal.getName());
 
-        Notice notice = noticeService.getActiveNoticeById(
-                id,
-                membership.getGroupId()
-        );
+        Notice notice = noticeService.getActiveNoticeById(id, membership);
 
         return ResponseEntity.ok(notice);
     }
 
-    @PostMapping("/{id}/visibility")
-    public ResponseEntity<Void> setVisibility(
-            Principal principal,
-            @PathVariable Long id,
-            @RequestBody SetVisibilityRequest request
-    ) {
-        currentUserService.requireAdmin(principal.getName());
-        Membership membership = currentUserService.getMembership(principal.getName());
-
-        noticeService.setVisibility(
-                id,
-                membership.getGroupId(),
-                request.teamIds()
-        );
-
-        return ResponseEntity.ok().build();
-    }
-
-    public record SetVisibilityRequest(
-            List<Long> teamIds
-    ) {}
-
     public record CreateNoticeRequest(
             String title,
             String content,
-            Instant expiresAt
+            Instant expiresAt,
+            List<Long> teamIds
     ) {}
 
     public record UpdateNoticeRequest(
             String title,
             String content,
-            Instant expiresAt
+            Instant expiresAt,
+            List<Long> teamIds
     ) {}
 }

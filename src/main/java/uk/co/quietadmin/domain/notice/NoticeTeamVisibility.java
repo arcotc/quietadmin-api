@@ -1,4 +1,4 @@
-package uk.co.quietadmin.domain.team;
+package uk.co.quietadmin.domain.notice;
 
 import jakarta.persistence.*;
 import lombok.Data;

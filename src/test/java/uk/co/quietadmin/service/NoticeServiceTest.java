@@ -10,12 +10,15 @@ import uk.co.quietadmin.domain.group.Membership;
 import uk.co.quietadmin.domain.notice.Notice;
 import uk.co.quietadmin.domain.notice.NoticeRepository;
 import uk.co.quietadmin.domain.notice.NoticeStatus;
-import uk.co.quietadmin.domain.team.NoticeTeamVisibilityRepository;
+import uk.co.quietadmin.domain.notice.NoticeTeamVisibility;
+import uk.co.quietadmin.domain.notice.NoticeTeamVisibilityRepository;
+import uk.co.quietadmin.domain.team.Team;
 import uk.co.quietadmin.domain.team.TeamRepository;
 import uk.co.quietadmin.helpers.TestFactory;
 import uk.co.quietadmin.security.SecurityEventService;
 import uk.co.quietadmin.service.notice.NoticeService;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,8 +54,10 @@ class NoticeServiceTest {
 
         Notice saved = TestFactory.draftNotice(1L, GROUP_ID, USER_ID);
         when(noticeRepository.save(any(Notice.class))).thenReturn(saved);
+        when(noticeRepository.findByIdAndGroupId(1L, GROUP_ID)).thenReturn(Optional.of(saved));
+        when(noticeTeamVisibilityRepository.findByNoticeIdIn(List.of(1L))).thenReturn(List.of());
 
-        Notice result = noticeService.create(membership(), input);
+        Notice result = noticeService.create(membership(), input, List.of());
 
         assertThat(input.getStatus()).isEqualTo(NoticeStatus.DRAFT);
         assertThat(result.getStatus()).isEqualTo(NoticeStatus.DRAFT);
@@ -101,5 +106,56 @@ class NoticeServiceTest {
                 .isInstanceOf(AccessDeniedException.class);
 
         verify(noticeRepository, never()).delete(any());
+    }
+
+    @Test
+    void update_savesOnlyTeamsFromTheNoticeGroup() {
+        Notice notice = TestFactory.draftNotice(9L, GROUP_ID, USER_ID);
+        Team team = TestFactory.team(20L, GROUP_ID, "Stewards");
+
+        when(noticeRepository.findByIdAndGroupId(9L, GROUP_ID))
+                .thenReturn(Optional.of(notice));
+        when(noticeRepository.save(any(Notice.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(teamRepository.findByIdAndGroupIdAndDeletedAtIsNull(20L, GROUP_ID))
+                .thenReturn(Optional.of(team));
+        when(noticeTeamVisibilityRepository.findByNoticeIdIn(List.of(9L))).thenReturn(List.of());
+
+        noticeService.update(9L, GROUP_ID, "Title", "Content", null, List.of(20L, 20L));
+
+        verify(noticeTeamVisibilityRepository).deleteByNoticeId(9L);
+        verify(noticeTeamVisibilityRepository, times(1)).save(any(NoticeTeamVisibility.class));
+    }
+
+    @Test
+    void update_crossGroupTeamThrows() {
+        Notice notice = TestFactory.draftNotice(9L, GROUP_ID, USER_ID);
+
+        when(noticeRepository.findByIdAndGroupId(9L, GROUP_ID))
+                .thenReturn(Optional.of(notice));
+        when(noticeRepository.save(any(Notice.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(teamRepository.findByIdAndGroupIdAndDeletedAtIsNull(99L, GROUP_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> noticeService.update(9L, GROUP_ID, "Title", "Content", null, List.of(99L)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Forbidden team");
+    }
+
+    @Test
+    void getActiveNoticeById_nonAdminCannotFetchNonVisibleNotice() {
+        Membership member = TestFactory.memberMembership(20L, GROUP_ID);
+
+        when(noticeRepository.findVisibleActiveNoticeById(
+                eq(9L),
+                eq(GROUP_ID),
+                eq(20L),
+                any()
+        )).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> noticeService.getActiveNoticeById(9L, member))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Notice not found");
+
+        verify(noticeRepository, never()).findByIdAndGroupId(anyLong(), anyLong());
     }
 }

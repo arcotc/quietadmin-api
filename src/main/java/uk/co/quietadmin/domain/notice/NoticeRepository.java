@@ -138,11 +138,59 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
                       and t.deletedAt is null
                 )
           )
-        order by n.createdAt desc
+        ORDER BY
+          CASE WHEN n.expiresAt IS NULL THEN 1 ELSE 0 END,
+          n.expiresAt ASC,
+          n.createdAt DESC
     """)
     List<Notice> findVisibleActiveNotices(
-            Long groupId,
-            Long userId,
-            Instant now
+            @Param("groupId") Long groupId,
+            @Param("userId") Long userId,
+            @Param("now") Instant now
+    );
+
+    @Query("""
+        select n
+        from Notice n
+        where n.id = :id
+          and n.groupId = :groupId
+          and n.status = uk.co.quietadmin.domain.notice.NoticeStatus.ACTIVE
+          and (n.expiresAt is null or n.expiresAt > :now)
+          and (
+                not exists (
+                    select 1 from NoticeTeamVisibility ntv
+                    where ntv.noticeId = n.id
+                )
+                or exists (
+                    select 1
+                    from NoticeTeamVisibility ntv2
+                    join TeamMembership tm on tm.teamId = ntv2.teamId
+                    join Team t on t.id = tm.teamId
+                    where ntv2.noticeId = n.id
+                      and tm.userId = :userId
+                      and t.groupId = :groupId
+                      and t.deletedAt is null
+                )
+          )
+    """)
+    Optional<Notice> findVisibleActiveNoticeById(
+            @Param("id") Long id,
+            @Param("groupId") Long groupId,
+            @Param("userId") Long userId,
+            @Param("now") Instant now
+    );
+
+    @Query("""
+        select n
+        from Notice n
+        where n.id = :id
+          and n.groupId = :groupId
+          and n.status = uk.co.quietadmin.domain.notice.NoticeStatus.ACTIVE
+          and (n.expiresAt is null or n.expiresAt > :now)
+    """)
+    Optional<Notice> findActiveNoticeByIdAndGroupId(
+            @Param("id") Long id,
+            @Param("groupId") Long groupId,
+            @Param("now") Instant now
     );
 }

@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Data
@@ -40,6 +42,9 @@ public class Notice {
 
     @Column(name = "expiry_reminder_sent_at")
     private Instant expiryReminderSentAt;
+
+    @Transient
+    private List<Long> teamIds = new ArrayList<>();
 
     @PrePersist
     void onCreate() {
